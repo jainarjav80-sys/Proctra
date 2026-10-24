@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { signToken, verifyToken, TokenError, newNonce } from "@/lib/tokens";
+import { signToken, verifyToken, TokenError, newNonce } from "@/lib/auth/tokens";
 import { allocateCategories, checkTimingFit, resolveQuestionCount } from "@/lib/interview/config";
 import { FallbackProvider } from "@/lib/llm/fallback";
 import { LLMError, type LLMProvider } from "@/lib/llm/types";

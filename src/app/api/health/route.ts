@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { envStatus } from "@/lib/env";
+import { envStatus } from "@/lib/config/env";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export const dynamic = "force-dynamic";

@@ -1,6 +1,6 @@
 # Proctra — 10-Hour Prototype Plan (ACTIVE)
 
-The production reference is [docs/Implementation_plan.md](docs/Implementation_plan.md). Its §3 conflict resolutions and §4 feasibility notes still apply, scaled down to prototype size. **Where they conflict, this file wins.**
+The production reference is [Implementation_plan.md](Implementation_plan.md). Its §3 conflict resolutions and §4 feasibility notes still apply, scaled down to prototype size. **Where they conflict, this file wins.**
 
 ## Scope
 

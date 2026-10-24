@@ -1,6 +1,6 @@
 import "server-only";
 import { SignJWT, jwtVerify, errors } from "jose";
-import { env } from "@/lib/env";
+import { env } from "@/lib/config/env";
 
 /**
  * Proctra-issued tokens (HS256). Candidates and the companion phone never get Supabase sessions.
