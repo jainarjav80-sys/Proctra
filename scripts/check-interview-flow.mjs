@@ -2,29 +2,54 @@
 // Drives a seeded interview through the real candidate API (no browser): consent → preflight → start →
 // answer (may trigger an LLM follow-up) → repeat → duplicate turn (idempotency) → stale turn (409) →
 // skip → no response, then checks statuses and transcripts in the DB.
+// The invite now requires a signed-in candidate whose email matches, so the script creates throwaway
+// candidate accounts (the invited one and an impostor) and authenticates with a bearer token.
 // Usage: node --env-file=.env.local scripts/check-interview-flow.mjs <token> [baseUrl]
 import { createClient } from "@supabase/supabase-js";
 
 const [token, base = "http://localhost:3123"] = process.argv.slice(2);
 if (!token) throw new Error("Pass a candidate token (from seed-demo-interview.mjs)");
-const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } });
+const sbUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const admin = createClient(sbUrl, process.env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } });
 const results = [];
 const check = (name, pass, detail = "") => results.push({ name, pass, detail });
 
-async function call(path, body, method = "POST") {
+const interviewId = JSON.parse(Buffer.from(token.split(".")[1], "base64url").toString()).sub;
+const { data: ivRow } = await admin.from("interviews").select("candidate_email").eq("id", interviewId).single();
+const created = [];
+async function candidate(email) {
+  const password = `Flow-${Date.now()}-${Math.random().toString(36).slice(2)}!`;
+  const { data, error } = await admin.auth.admin.createUser({ email, password, email_confirm: true, user_metadata: { account_type: "candidate", full_name: "Flow Candidate" } });
+  if (error) throw error;
+  created.push(data.user.id);
+  const c = createClient(sbUrl, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY, { auth: { persistSession: false } });
+  const { data: s, error: e2 } = await c.auth.signInWithPassword({ email, password });
+  if (e2) throw e2;
+  return s.session.access_token;
+}
+let bearer = null;
+
+async function call(path, body, method = "POST", auth = bearer) {
   const res = await fetch(`${base}/api/candidate/${path}`, {
     method,
-    headers: { "content-type": "application/json", "x-proctra-token": token },
+    headers: { "content-type": "application/json", "x-proctra-token": token, ...(auth ? { authorization: `Bearer ${auth}` } : {}) },
     body: method === "GET" ? undefined : JSON.stringify(body ?? {}),
   });
   return { status: res.status, json: await res.json() };
 }
+
+const noAuth = await call("session", null, "GET", null);
+check("not signed in → 401 SIGN_IN", noAuth.status === 401 && noAuth.json.code === "SIGN_IN");
+const impostor = await candidate(`flow-impostor-${Date.now()}@proctra.test`);
+const wrong = await call("session", null, "GET", impostor);
+check("signed in as a different candidate → 403, no interview data in the response", wrong.status === 403 && !JSON.stringify(wrong.json).includes(ivRow.candidate_email) && !("jobTitle" in wrong.json));
+bearer = await candidate(ivRow.candidate_email);
 const turn = (version, kind, transcript = "", turnId = crypto.randomUUID()) =>
   call("interview/turn", { turnId, version, kind, transcript, avgConfidence: transcript ? 0.92 : null, segments: [] });
 
 const session = await call("session", null, "GET");
 check("session loads with candidate-safe fields", session.status === 200 && !("rubric" in session.json), JSON.stringify(session.json).slice(0, 120));
-const bad = await fetch(`${base}/api/candidate/session`, { headers: { "x-proctra-token": token.slice(0, -3) + "abc" } });
+const bad = await fetch(`${base}/api/candidate/session`, { headers: { "x-proctra-token": token.slice(0, -3) + "abc", authorization: `Bearer ${bearer}` } });
 check("tampered token rejected", bad.status === 401);
 
 const early = await call("interview/start");
@@ -75,7 +100,7 @@ check("spoken 'skip this one' → advances to Q3", r.json.action.question?.prima
 r = await turn(r.json.version, "NO_RESPONSE");
 check("silence on the last question → interview ends", r.json.action.type === "END", JSON.stringify(r.json.action).slice(0, 160));
 
-const ivId = session.json && (await admin.from("interviews").select("id, status, fsm_state").eq("candidate_email", "priya.raman@proctra.test").order("created_at", { ascending: false }).limit(1).single()).data;
+const ivId = (await admin.from("interviews").select("id, status, fsm_state").eq("id", interviewId).single()).data;
 const { data: qs } = await admin.from("questions").select("primary_index, follow_up_index, status, transcript").eq("interview_id", ivId.id).order("primary_index").order("follow_up_index");
 const st = (p, f = 0) => qs.find((q) => q.primary_index === p && q.follow_up_index === f)?.status;
 check("interview marked COMPLETED", ivId.status === "COMPLETED");
@@ -85,6 +110,7 @@ check("Q3 UNANSWERED", st(3) === "UNANSWERED");
 const { count } = await admin.from("transcript_segments").select("id", { count: "exact", head: true }).eq("interview_id", ivId.id);
 check("transcript segments stored (agent + candidate)", (count ?? 0) >= 6, `${count} segments`);
 
+for (const id of created) await admin.auth.admin.deleteUser(id);
 for (const x of results) console.log(`${x.pass ? "PASS" : "FAIL"}  ${x.name}${x.detail && !x.pass ? `  (${x.detail})` : ""}`);
 const failed = results.filter((x) => !x.pass).length;
 console.log(failed ? `\n${failed} check(s) failed` : `\nAll ${results.length} checks passed`);
