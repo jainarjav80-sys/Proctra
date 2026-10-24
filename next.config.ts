@@ -1,9 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
-  cacheComponents: true,
-  partialPrefetching: true,
+  // Cache Components is off: almost every page reads the session or interview state per request,
+  // and the Suspense-everywhere rules cost more time than they save in a 10h prototype.
   turbopack: {
     rules: {
       "*.css": {
