@@ -21,6 +21,9 @@ async function account(tag, metadata) {
   const { data, error } = await admin.auth.admin.createUser({ email, password, email_confirm: true, user_metadata: metadata });
   if (error) throw new Error(`${tag}: ${error.message}`);
   userIds.push(data.user.id);
+  // The createUser response predates the sign-up trigger; read the stored app_metadata.
+  const { data: stored } = await admin.auth.admin.getUserById(data.user.id);
+  data.user.app_metadata = stored.user.app_metadata;
   if (data.user.app_metadata?.org_id) orgIds.add(data.user.app_metadata.org_id);
   const client = createClient(url, anonKey, { auth: { persistSession: false } });
   const { error: e2 } = await client.auth.signInWithPassword({ email, password });
