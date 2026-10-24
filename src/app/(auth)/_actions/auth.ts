@@ -75,6 +75,8 @@ export async function signup(_: AuthState, form: FormData): Promise<AuthState> {
   const { data: res, error } = await supabase.auth.signUp({ email: d.email, password: d.password, options: { data } });
   if (error) return { error: error.message.includes("Database error") ? "Sign-up failed. Check your details and try again." : error.message };
   if (!res.session) return { message: "Check your inbox to confirm your email, then sign in." };
+  // The role is assigned by a DB trigger during sign-up; refresh so the session JWT definitely carries it.
+  await supabase.auth.refreshSession();
   redirect(destination(await currentRole(supabase), safeNext(form.get("next"))));
 }
 
