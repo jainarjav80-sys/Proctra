@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { requireRecruiter } from "@/lib/auth/recruiter";
 import { RecruiterHeader } from "@/components/recruiter/recruiter-header";
 import { Badge } from "@/components/ui/badge";
@@ -31,7 +32,7 @@ export default async function DashboardPage() {
               <ul className="divide-y">
                 {interviews.map((i) => (
                   <li key={i.id} className="flex items-center justify-between py-3 text-sm">
-                    <span className="font-medium">{i.candidate_name}</span>
+                    <Link href={`/interviews/${i.id}`} className="font-medium hover:text-primary">{i.candidate_name}</Link>
                     <span className="text-muted-foreground">
                       {(i.jobs as unknown as { title: string } | null)?.title}
                     </span>
