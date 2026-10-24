@@ -19,6 +19,7 @@ export function DeviceStep({ onDone }: { onDone: (stream: MediaStream, result: D
   const peak = useRef(0);
   const [heard, setHeard] = useState("");
   const [listening, setListening] = useState(false);
+  const [headset, setHeadset] = useState<boolean | null>(null);
 
   async function enable() {
     setError(null);
@@ -39,6 +40,15 @@ export function DeviceStep({ onDone }: { onDone: (stream: MediaStream, result: D
       );
     }
   }
+
+  // Headset hint: device labels are only visible after permission is granted.
+  useEffect(() => {
+    if (!stream) return;
+    void navigator.mediaDevices.enumerateDevices().then((devices) => {
+      const re = /head(set|phone)|earbud|earphone|airpods|buds|bluetooth|hands-free|wh-|wf-/i;
+      setHeadset(devices.some((d) => (d.kind === "audiooutput" || d.kind === "audioinput") && re.test(d.label)));
+    });
+  }, [stream]);
 
   // Preview + level meter.
   useEffect(() => {
@@ -133,6 +143,13 @@ export function DeviceStep({ onDone }: { onDone: (stream: MediaStream, result: D
           </div>
         </div>
       )}
+      {stream ? (
+        <p className={`rounded-md border p-3 text-sm ${headset === false ? "border-warning bg-warning-soft text-slate-900" : "text-muted-foreground"}`}>
+          {headset === false
+            ? "No headphones detected. Without them, the interviewer's voice can echo into your mic and be mistaken for an interruption."
+            : "Headphones are recommended. You can interrupt the interviewer at any time just by speaking."}
+        </p>
+      ) : null}
       {error ? (
         <p role="alert" className="text-sm text-danger">
           {error}
