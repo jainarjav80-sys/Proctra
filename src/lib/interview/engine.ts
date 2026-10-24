@@ -5,6 +5,7 @@ import type { CandidateInterview } from "@/lib/candidate/session";
 import { llm } from "@/lib/llm";
 import { decideFollowUp } from "./follow-up";
 import { canAskFollowUp, decideTurn, timeIsUp, type FsmState, type QuestionStatus } from "./fsm";
+import { recordSpeechSignals } from "@/lib/proctoring/speech-signals";
 
 /** What the client should do next. The client never decides interview flow itself. */
 export type InterviewAction =
@@ -39,6 +40,13 @@ export const turnSchema = z.object({
     .array(z.object({ text: z.string().max(5000), startMs: z.number().int().min(0), endMs: z.number().int().min(0), confidence: z.number().nullable() }))
     .max(200)
     .default([]),
+  /** Times the candidate spoke over the interviewer while this question was being read. */
+  bargeIns: z
+    .array(z.object({ sentenceIndex: z.number().int().min(0), sentenceCount: z.number().int().min(1), atMs: z.number().int().min(0), utterance: z.string().max(2000) }))
+    .max(20)
+    .default([]),
+  /** What the candidate said in the first ~15 s of answering (question-echo check). */
+  openingText: z.string().max(4000).default(""),
 });
 export type TurnInput = z.infer<typeof turnSchema>;
 
@@ -195,6 +203,9 @@ export async function processTurn(admin: Admin, interview: CandidateInterview, i
       );
     }
   }
+
+  // Observed speech signals (barge-ins, question read aloud). Proctoring plane only; never scored.
+  await recordSpeechSignals(admin, interview, current, { bargeIns: input.bargeIns, openingText: input.openingText, atMs: now });
 
   const budget = {
     durationMinutes: interview.duration_minutes,
