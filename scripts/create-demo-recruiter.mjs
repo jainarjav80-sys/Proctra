@@ -15,7 +15,12 @@ const { data: list } = await admin.auth.admin.listUsers({ perPage: 1000 });
 const existing = list?.users.find((u) => u.email === email);
 const { error } = existing
   ? await admin.auth.admin.updateUserById(existing.id, { password, email_confirm: true })
-  : await admin.auth.admin.createUser({ email, password, email_confirm: true });
+  : await admin.auth.admin.createUser({
+      email,
+      password,
+      email_confirm: true,
+      user_metadata: { account_type: "organization", org_name: "Demo Org", full_name: "Demo Recruiter" },
+    });
 if (error) throw error;
 
 let env = readFileSync(".env.local", "utf8");

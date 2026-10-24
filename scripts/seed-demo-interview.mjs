@@ -13,6 +13,9 @@ const count = Number(process.argv[process.argv.indexOf("--questions") + 1]) || 3
 const { data: users } = await admin.auth.admin.listUsers({ perPage: 1000 });
 const recruiter = users?.users.find((u) => u.email === (env.DEMO_RECRUITER_EMAIL || "demo.recruiter@proctra.test"));
 if (!recruiter) throw new Error("Run scripts/create-demo-recruiter.mjs first");
+const orgId = recruiter.app_metadata?.org_id;
+if (!orgId) throw new Error("Demo recruiter has no organization (run migration 0003)");
+const candidateEmail = process.env.DEMO_CANDIDATE_EMAIL || "priya.raman@proctra.test";
 
 const QUESTIONS = [
   ["EXPERIENCE", "Spring Boot", "Tell me about the payments monolith you split into microservices at FinFlow. How did you decide where the first service boundary should go?"],
@@ -26,6 +29,7 @@ const { data: job, error: jobErr } = await admin
   .from("jobs")
   .insert({
     recruiter_id: recruiter.id,
+    org_id: orgId,
     title: "Senior Backend Engineer (demo)",
     description: "Demo job for the Proctra prototype. Java, Spring Boot, Kafka, PostgreSQL and Kubernetes for a payments platform.",
     experience_level: "SENIOR",
@@ -41,9 +45,10 @@ const { data: iv, error: ivErr } = await admin
   .from("interviews")
   .insert({
     recruiter_id: recruiter.id,
+    org_id: orgId,
     job_id: job.id,
     candidate_name: "Priya Raman",
-    candidate_email: "priya.raman@proctra.test",
+    candidate_email: candidateEmail,
     question_count: count,
     duration_minutes: 15,
     response_time_limit_sec: 120,
