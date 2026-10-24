@@ -3,6 +3,7 @@ import { requireRecruiter } from "@/lib/auth/recruiter";
 import { RecruiterHeader } from "@/components/recruiter/recruiter-header";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { OrgInviteCard } from "@/components/org/org-invite-card";
 
 export default async function DashboardPage() {
   const { supabase, user } = await requireRecruiter();
@@ -11,11 +12,15 @@ export default async function DashboardPage() {
     .select("id, candidate_name, status, created_at, jobs(title)")
     .order("created_at", { ascending: false })
     .limit(50);
+  const { data: org } = await supabase.from("organizations").select("name, invite_code").maybeSingle();
 
   return (
     <>
       <RecruiterHeader email={user.email} />
       <main className="mx-auto w-full max-w-6xl flex-1 p-6">
+        <div className="mb-6">
+          {org ? <OrgInviteCard orgName={org.name} code={org.invite_code} isAdmin={user.role === "ORG_ADMIN"} /> : null}
+        </div>
         <h1 className="mb-6 text-2xl font-semibold">Interviews</h1>
         <Card>
           <CardHeader>

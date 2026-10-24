@@ -6,6 +6,6 @@ export function proxy(request: NextRequest) {
 }
 
 export const config = {
-  // Recruiter pages and auth pages only. Candidate/companion/API routes use Proctra tokens.
-  matcher: ["/dashboard/:path*", "/jobs/:path*", "/interviews/:path*", "/login", "/signup"],
+  // Role-gated pages and the auth pages. Candidate interview pages and APIs verify their own access.
+  matcher: ["/dashboard/:path*", "/jobs/:path*", "/interviews/:path*", "/candidate/:path*", "/login", "/signup"],
 };
