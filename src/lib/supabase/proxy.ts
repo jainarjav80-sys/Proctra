@@ -1,14 +1,19 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
+import { homeFor, roleFromClaims } from "@/lib/auth/roles";
 
-const RECRUITER_PREFIXES = ["/dashboard", "/jobs", "/interviews"];
+const ORG_PREFIXES = ["/dashboard", "/jobs", "/interviews"];
+const CANDIDATE_PREFIXES = ["/candidate"];
 
-/** Refreshes the recruiter session cookie and gates recruiter routes. */
+/**
+ * Refreshes the Supabase session cookie and gates routes by role (from JWT app_metadata, so no DB
+ * call). This is the optimistic check; pages and actions re-verify on the server.
+ */
 export async function updateSession(request: NextRequest) {
   let response = NextResponse.next({ request });
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  if (!url || !key) return response; // Unconfigured: let /api/health report it.
+  if (!url || !key) return response;
 
   const supabase = createServerClient(url, key, {
     cookies: {
@@ -23,20 +28,28 @@ export async function updateSession(request: NextRequest) {
   });
 
   const { data } = await supabase.auth.getClaims();
-  const signedIn = Boolean(data?.claims?.sub);
+  const claims = data?.claims;
+  const role = claims?.sub ? roleFromClaims(claims) : null;
   const path = request.nextUrl.pathname;
+  const redirect = (pathname: string, keepNext = false) => {
+    const u = request.nextUrl.clone();
+    u.pathname = pathname;
+    u.search = "";
+    if (keepNext) u.searchParams.set("next", path + request.nextUrl.search);
+    const r = NextResponse.redirect(u);
+    response.cookies.getAll().forEach((c) => r.cookies.set(c));
+    return r;
+  };
 
-  if (!signedIn && RECRUITER_PREFIXES.some((p) => path.startsWith(p))) {
-    const login = request.nextUrl.clone();
-    login.pathname = "/login";
-    login.searchParams.set("next", path);
-    return NextResponse.redirect(login);
+  const orgRoute = ORG_PREFIXES.some((p) => path.startsWith(p));
+  const candidateRoute = CANDIDATE_PREFIXES.some((p) => path.startsWith(p));
+  if (orgRoute || candidateRoute) {
+    if (!role) return redirect("/login", true);
+    if (orgRoute && role === "CANDIDATE") return redirect(homeFor(role));
+    if (candidateRoute && role !== "CANDIDATE") return redirect(homeFor(role));
   }
-  if (signedIn && (path === "/login" || path === "/signup")) {
-    const dash = request.nextUrl.clone();
-    dash.pathname = "/dashboard";
-    dash.search = "";
-    return NextResponse.redirect(dash);
+  if (role && (path === "/login" || path === "/signup") && !request.nextUrl.searchParams.get("next")) {
+    return redirect(homeFor(role));
   }
   return response;
 }
