@@ -12,7 +12,7 @@ const body = z.object({
 /** Stores the device/display audit taken before the interview starts. */
 export async function POST(req: Request) {
   try {
-    const { admin, interview } = await requireCandidate(req.headers.get(CANDIDATE_TOKEN_HEADER));
+    const { admin, interview } = await requireCandidate(req.headers.get(CANDIDATE_TOKEN_HEADER), req);
     if (!interview.consent) return Response.json({ error: "Consent is required first" }, { status: 403 });
     const parsed = body.safeParse(await req.json());
     if (!parsed.success) return Response.json({ error: "Invalid preflight payload" }, { status: 400 });

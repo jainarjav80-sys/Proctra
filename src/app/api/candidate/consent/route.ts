@@ -7,7 +7,7 @@ const body = z.object({ scopes: z.array(z.string()).max(10), policyVersion: z.st
 /** Records itemised consent (append-style: the latest grant is kept with IP, user agent and time). */
 export async function POST(req: Request) {
   try {
-    const { admin, interview } = await requireCandidate(req.headers.get(CANDIDATE_TOKEN_HEADER));
+    const { admin, interview } = await requireCandidate(req.headers.get(CANDIDATE_TOKEN_HEADER), req);
     const parsed = body.safeParse(await req.json());
     if (!parsed.success) return Response.json({ error: "Invalid consent payload" }, { status: 400 });
     if (parsed.data.policyVersion !== CONSENT_POLICY_VERSION) {
