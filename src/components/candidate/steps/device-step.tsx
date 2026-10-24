@@ -1,72 +1,109 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { BrowserTTS } from "@/lib/speech/browser-tts";
 import { WebSpeechSTT } from "@/lib/speech/web-speech-stt";
+import { WhisperSTT } from "@/lib/speech/whisper-stt";
+import { mapSttError } from "@/lib/speech/stt-errors";
+import { headphoneLabelMatch, judgeEcho, meterLevel, realInputs, resolveInputLabel, smoothLevel, type DeviceLike, type EchoTestResult } from "@/lib/speech/audio-checks";
+import type { SpeechToText, SttEngine } from "@/lib/speech/types";
+import { transcribeAudio } from "../api";
+import type { BrowserSupport } from "./browser-gate";
+import { NativeSelect } from "@/components/forms/native-select";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 
 export interface DeviceResult {
   camera: { ok: boolean; label: string | null; width: number | null; height: number | null };
   microphone: { ok: boolean; label: string | null; peakLevel: number };
-  speechTest: { ok: boolean; heard: string };
+  speechTest: { ok: boolean; heard: string; engine: SttEngine; nativeError: string | null };
+  audio: {
+    headphoneLabelMatch: boolean;
+    echoTest: (EchoTestResult & { ran: true }) | { ran: false };
+    candidateConfirmedHeadphones: boolean;
+    detection: "labels" | "echo-test" | "candidate-confirmed" | "none";
+  };
 }
 
-/** Camera preview, mic level meter and a short speech-recognition test. Keeps the stream for the interview. */
-export function DeviceStep({ onDone }: { onDone: (stream: MediaStream, result: DeviceResult) => void }) {
+const VIDEO = { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } };
+const AUDIO = { echoCancellation: true, noiseSuppression: true, autoGainControl: true };
+
+async function averageRms(analyser: AnalyserNode, ms: number) {
+  const buf = new Float32Array(analyser.fftSize);
+  const end = performance.now() + ms;
+  let sum = 0;
+  let n = 0;
+  while (performance.now() < end) {
+    analyser.getFloatTimeDomainData(buf);
+    let s = 0;
+    for (const v of buf) s += v * v;
+    sum += Math.sqrt(s / buf.length);
+    n++;
+    await new Promise((r) => setTimeout(r, 50));
+  }
+  return n ? sum / n : 0;
+}
+
+/**
+ * Camera preview, mic picker + level meter, a real speech-recognition probe (falls back to server
+ * Whisper when the browser's engine has no backend), and an echo test for barge-in reliability.
+ */
+export function DeviceStep({ token, support, onDone }: { token: string; support: BrowserSupport; onDone: (stream: MediaStream, result: DeviceResult) => void }) {
   const video = useRef<HTMLVideoElement>(null);
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [level, setLevel] = useState(0);
   const peak = useRef(0);
+  const [devices, setDevices] = useState<DeviceLike[]>([]);
+  const [engine, setEngine] = useState<SttEngine>(support.preferredEngine);
+  const [nativeError, setNativeError] = useState<string | null>(null);
   const [heard, setHeard] = useState("");
-  const [listening, setListening] = useState(false);
-  const [headset, setHeadset] = useState<boolean | null>(null);
+  const [probe, setProbe] = useState<"idle" | "listening" | "transcribing">("idle");
+  const [echo, setEcho] = useState<EchoTestResult | null>(null);
+  const [echoRunning, setEchoRunning] = useState(false);
+  const [confirmedHeadphones, setConfirmedHeadphones] = useState(false);
 
-  async function enable() {
+  async function open(audioDeviceId?: string) {
     setError(null);
     try {
       const s = await navigator.mediaDevices.getUserMedia({
-        video: { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } },
-        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+        video: VIDEO,
+        audio: audioDeviceId ? { ...AUDIO, deviceId: { exact: audioDeviceId } } : AUDIO,
       });
+      stream?.getTracks().forEach((t) => t.stop());
       setStream(s);
+      setDevices((await navigator.mediaDevices.enumerateDevices()).map((d) => ({ deviceId: d.deviceId, groupId: d.groupId, kind: d.kind, label: d.label })));
     } catch (e) {
       const name = (e as DOMException).name;
       setError(
         name === "NotAllowedError"
           ? "Camera/microphone permission was blocked. Click the camera icon in the address bar, allow access, and try again."
-          : name === "NotFoundError"
-            ? "No camera or microphone was found. Connect one and try again."
+          : name === "NotFoundError" || name === "OverconstrainedError"
+            ? "That camera or microphone wasn't found. Connect one (or pick another) and try again."
             : `Couldn't start your camera or microphone (${name}). Close other apps using them and try again.`,
       );
     }
   }
 
-  // Headset hint: device labels are only visible after permission is granted.
-  useEffect(() => {
-    if (!stream) return;
-    void navigator.mediaDevices.enumerateDevices().then((devices) => {
-      const re = /head(set|phone)|earbud|earphone|airpods|buds|bluetooth|hands-free|wh-|wf-/i;
-      setHeadset(devices.some((d) => (d.kind === "audiooutput" || d.kind === "audioinput") && re.test(d.label)));
-    });
-  }, [stream]);
-
-  // Preview + level meter.
+  // Preview + dB-scaled level meter.
   useEffect(() => {
     if (!stream) return;
     if (video.current) video.current.srcObject = stream;
     const ctx = new AudioContext();
     const analyser = ctx.createAnalyser();
-    analyser.fftSize = 512;
+    analyser.fftSize = 1024;
     ctx.createMediaStreamSource(stream).connect(analyser);
-    const data = new Uint8Array(analyser.fftSize);
+    const buf = new Float32Array(analyser.fftSize);
     let raf = 0;
+    let shown = 0;
     const tick = () => {
-      analyser.getByteTimeDomainData(data);
-      let sum = 0;
-      for (const v of data) sum += ((v - 128) / 128) ** 2;
-      const rms = Math.min(1, Math.sqrt(sum / data.length) * 4);
-      peak.current = Math.max(peak.current, rms);
-      setLevel(rms);
+      analyser.getFloatTimeDomainData(buf);
+      let s = 0;
+      for (const v of buf) s += v * v;
+      const lvl = meterLevel(Math.sqrt(s / buf.length));
+      shown = smoothLevel(shown, lvl);
+      peak.current = Math.max(peak.current, lvl);
+      setLevel(shown);
       raf = requestAnimationFrame(tick);
     };
     tick();
@@ -76,33 +113,105 @@ export function DeviceStep({ onDone }: { onDone: (stream: MediaStream, result: D
     };
   }, [stream]);
 
-  function speechTest() {
-    const stt = new WebSpeechSTT();
-    setListening(true);
-    setHeard("");
-    const off = stt.onResult((r) => {
-      setHeard(r.text);
-      if (r.isFinal && r.text.trim()) {
+  const runProbeRef = useRef<((e: SttEngine) => void) | null>(null);
+
+  const finishProbe = useCallback((stt: SpeechToText, text: string) => {
+    stt.stop();
+    setHeard(text);
+    setProbe("idle");
+  }, []);
+
+  /** Starts recognition for real and requires an actual transcript (not just "API exists"). */
+  const runProbe = useCallback(
+    (which: SttEngine) => {
+      setError(null);
+      setHeard("");
+      setProbe("listening");
+      const stt: SpeechToText = which === "web-speech" ? new WebSpeechSTT() : new WhisperSTT((blob) => transcribeAudio(token, blob));
+      let done = false;
+      const timeout = setTimeout(async () => {
+        if (done) return;
+        if (which === "groq-whisper") {
+          setProbe("transcribing");
+          await stt.flush();
+        }
+        if (done) return;
+        done = true;
         stt.stop();
-        setListening(false);
-        off();
-      }
-    });
-    stt.onError((m) => {
-      setListening(false);
-      setError(m === "network" ? "Speech recognition needs an internet connection." : `Speech recognition error: ${m}`);
-    });
-    stt.start();
-    setTimeout(() => {
-      stt.stop();
-      setListening(false);
-    }, 10000);
+        setProbe("idle");
+        setError(mapSttError("no-speech", navigator.onLine).message);
+      }, 10_000);
+      stt.onResult((r) => {
+        if (r.isFinal && r.text.trim().split(/\s+/).length >= 2 && !done) {
+          done = true;
+          clearTimeout(timeout);
+          finishProbe(stt, r.text);
+        } else if (!r.isFinal && which === "web-speech") setHeard(r.text);
+      });
+      stt.onError((code) => {
+        if (done) return;
+        const info = which === "web-speech" ? mapSttError(code, navigator.onLine) : null;
+        if (info && info.kind === "transient") return; // no-speech/aborted: keep waiting for the timeout
+        done = true;
+        clearTimeout(timeout);
+        stt.stop();
+        setProbe("idle");
+        if (info?.useServerFallback) {
+          // e.g. Brave/Vivaldi: API exists but has no backend → switch to server Whisper and re-probe.
+          setNativeError(code);
+          setEngine("groq-whisper");
+          setError(info.message);
+          setTimeout(() => runProbeRef.current?.("groq-whisper"), 300);
+          return;
+        }
+        setError(info ? info.message : code === "server-busy" ? "The speech service is busy. Try again in a few seconds." : "Proctra's speech service couldn't process the audio. Try again.");
+      });
+      stt.start();
+    },
+    [finishProbe, token],
+  );
+
+  useEffect(() => {
+    runProbeRef.current = runProbe;
+  }, [runProbe]);
+
+  /** Speaks a phrase through the speakers and measures how much reaches the echo-cancelled mic. */
+  async function runEchoTest() {
+    setEchoRunning(true);
+    let probeStream: MediaStream | null = null;
+    let ctx: AudioContext | null = null;
+    try {
+      const deviceId = stream?.getAudioTracks()[0]?.getSettings().deviceId;
+      probeStream = await navigator.mediaDevices.getUserMedia({ audio: deviceId ? { ...AUDIO, deviceId: { exact: deviceId } } : AUDIO });
+      ctx = new AudioContext();
+      const analyser = ctx.createAnalyser();
+      analyser.fftSize = 1024;
+      ctx.createMediaStreamSource(probeStream).connect(analyser);
+      const baseline = await averageRms(analyser, 800);
+      const tts = new BrowserTTS();
+      const speaking = tts.speak("This is a short audio test. Please stay quiet for a moment.");
+      await new Promise((r) => setTimeout(r, 400)); // let playback start
+      const during = await averageRms(analyser, 1800);
+      await speaking;
+      setEcho(judgeEcho(baseline, during));
+    } catch {
+      setError("The echo test couldn't access your microphone.");
+    } finally {
+      probeStream?.getTracks().forEach((t) => t.stop());
+      void ctx?.close();
+      setEchoRunning(false);
+    }
   }
 
   const vTrack = stream?.getVideoTracks()[0];
   const aTrack = stream?.getAudioTracks()[0];
   const settings = vTrack?.getSettings();
-  const ok = Boolean(stream) && heard.trim().length > 0;
+  const inputs = realInputs(devices);
+  const currentInput = aTrack?.getSettings().deviceId;
+  const inputLabel = aTrack ? resolveInputLabel(aTrack.label, currentInput, devices) : "";
+  const labelsSayHeadphones = headphoneLabelMatch(devices);
+  const headphonesOk = labelsSayHeadphones || echo?.result === "pass" || confirmedHeadphones;
+  const ok = Boolean(stream) && heard.trim().split(/\s+/).length >= 2;
 
   return (
     <div className="flex flex-col gap-5">
@@ -111,11 +220,11 @@ export function DeviceStep({ onDone }: { onDone: (stream: MediaStream, result: D
         <p className="text-muted-foreground">Make sure your face is well lit and centred, and that we can hear you.</p>
       </div>
       {!stream ? (
-        <Button size="lg" onClick={enable} className="self-start">
+        <Button size="lg" onClick={() => open()} className="self-start">
           Allow camera & microphone
         </Button>
       ) : (
-        <div className="grid gap-4 md:grid-cols-[1fr_260px]">
+        <div className="grid gap-4 md:grid-cols-[1fr_280px]">
           <video ref={video} autoPlay muted playsInline className="aspect-video w-full rounded-xl bg-black object-cover [transform:scaleX(-1)]" />
           <div className="flex flex-col gap-4 text-sm">
             <div>
@@ -125,31 +234,73 @@ export function DeviceStep({ onDone }: { onDone: (stream: MediaStream, result: D
                 {settings?.width}×{settings?.height}
               </p>
             </div>
-            <div>
-              <p className="font-medium">Microphone level</p>
-              <div className="mt-1 h-2 w-full overflow-hidden rounded-full bg-muted" aria-label="Microphone level">
-                <div className="h-full bg-success transition-[width]" style={{ width: `${Math.round(level * 100)}%` }} />
+            <div className="flex flex-col gap-1">
+              <p className="font-medium">Microphone</p>
+              {inputs.length > 1 ? (
+                <NativeSelect aria-label="Microphone" data-testid="mic-name" value={inputs.some((d) => d.deviceId === currentInput) ? currentInput : ""} onChange={(e) => open(e.target.value)}>
+                  {!inputs.some((d) => d.deviceId === currentInput) ? <option value="">{inputLabel}</option> : null}
+                  {inputs.map((d) => (
+                    <option key={d.deviceId} value={d.deviceId}>
+                      {d.label || "Microphone"}
+                    </option>
+                  ))}
+                </NativeSelect>
+              ) : (
+                <p className="text-muted-foreground" data-testid="mic-name">
+                  {inputLabel}
+                </p>
+              )}
+              <div className="mt-1 h-2 w-full overflow-hidden rounded-full bg-muted" role="meter" aria-label="Microphone level" aria-valuenow={Math.round(level * 100)} aria-valuemin={0} aria-valuemax={100}>
+                <div className={`h-full transition-[width] duration-75 ${level > 0.85 ? "bg-warning" : "bg-success"}`} style={{ width: `${Math.round(level * 100)}%` }} />
               </div>
-              <p className="mt-1 text-muted-foreground">{aTrack?.label || "Microphone"}</p>
+              <p className="text-xs text-muted-foreground">Speak normally: the bar should reach about half way.</p>
             </div>
             <div>
               <p className="font-medium">Speech test</p>
               <p className="text-muted-foreground">Click below and say “I am ready to begin”.</p>
-              <Button size="sm" variant="outline" className="mt-2" onClick={speechTest} disabled={listening}>
-                {listening ? "Listening…" : heard ? "Test again" : "Start speech test"}
+              <Button size="sm" variant="outline" className="mt-2" onClick={() => runProbe(engine)} disabled={probe !== "idle"}>
+                {probe === "listening" ? "Listening…" : probe === "transcribing" ? "Transcribing…" : heard ? "Test again" : "Start speech test"}
               </Button>
-              {heard ? <p className="mt-2 rounded bg-muted p-2">“{heard}”</p> : null}
+              {heard ? (
+                <p className="mt-2 rounded bg-muted p-2" data-testid="speech-heard">
+                  “{heard}”
+                </p>
+              ) : null}
+              <p className="mt-1 text-xs text-muted-foreground" data-testid="speech-engine">
+                Engine: {engine === "web-speech" ? `${support.info.label} speech recognition` : "Proctra speech service (Whisper)"}
+              </p>
             </div>
           </div>
         </div>
       )}
+
       {stream ? (
-        <p className={`rounded-md border p-3 text-sm ${headset === false ? "border-warning bg-warning-soft text-slate-900" : "text-muted-foreground"}`}>
-          {headset === false
-            ? "No headphones detected. Without them, the interviewer's voice can echo into your mic and be mistaken for an interruption."
-            : "Headphones are recommended. You can interrupt the interviewer at any time just by speaking."}
-        </p>
+        <div className={`flex flex-col gap-2 rounded-md border p-3 text-sm ${headphonesOk ? "text-muted-foreground" : "border-warning bg-warning-soft text-slate-900"}`}>
+          <p>
+            {labelsSayHeadphones
+              ? "Headphones detected. "
+              : echo?.result === "pass"
+                ? "Echo test passed: your microphone barely picks up the interviewer. "
+                : echo?.result === "warn"
+                  ? "Your microphone picks up sound from your speakers, so the interviewer's voice may be mistaken for you interrupting. Headphones are recommended. "
+                  : "Headphones are recommended so the interviewer's voice doesn't echo into your mic. "}
+            You can interrupt the interviewer at any time just by speaking.
+          </p>
+          <div className="flex flex-wrap items-center gap-3">
+            <Button size="sm" variant="outline" onClick={runEchoTest} disabled={echoRunning}>
+              {echoRunning ? "Testing… stay quiet" : echo ? "Run echo test again" : "Run echo test"}
+            </Button>
+            {!labelsSayHeadphones ? (
+              <label className="flex items-center gap-2">
+                <Checkbox checked={confirmedHeadphones} onCheckedChange={(v) => setConfirmedHeadphones(Boolean(v))} />
+                I&apos;m using headphones
+              </label>
+            ) : null}
+            {echo ? <span className="font-mono text-xs">pickup ×{echo.ratio}</span> : null}
+          </div>
+        </div>
       ) : null}
+
       {error ? (
         <p role="alert" className="text-sm text-danger">
           {error}
@@ -163,8 +314,14 @@ export function DeviceStep({ onDone }: { onDone: (stream: MediaStream, result: D
             stream &&
             onDone(stream, {
               camera: { ok: Boolean(vTrack), label: vTrack?.label ?? null, width: settings?.width ?? null, height: settings?.height ?? null },
-              microphone: { ok: Boolean(aTrack), label: aTrack?.label ?? null, peakLevel: Math.round(peak.current * 100) / 100 },
-              speechTest: { ok: true, heard: heard.slice(0, 300) },
+              microphone: { ok: Boolean(aTrack), label: inputLabel || null, peakLevel: Math.round(peak.current * 100) / 100 },
+              speechTest: { ok: true, heard: heard.slice(0, 300), engine, nativeError },
+              audio: {
+                headphoneLabelMatch: labelsSayHeadphones,
+                echoTest: echo ? { ...echo, ran: true } : { ran: false },
+                candidateConfirmedHeadphones: confirmedHeadphones,
+                detection: labelsSayHeadphones ? "labels" : echo?.result === "pass" ? "echo-test" : confirmedHeadphones ? "candidate-confirmed" : "none",
+              },
             })
           }
         >
