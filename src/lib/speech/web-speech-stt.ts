@@ -32,7 +32,7 @@ const FATAL = new Set(["not-allowed", "service-not-allowed", "audio-capture", "n
  * restarts automatically while active. Audio is processed by the browser vendor's service.
  */
 export class WebSpeechSTT implements SpeechToText {
-  readonly name = "web-speech";
+  readonly name = "web-speech" as const;
   private rec: Recognition | null = null;
   private active = false;
   private resultCbs = new Set<(r: SttResult) => void>();
@@ -92,6 +92,11 @@ export class WebSpeechSTT implements SpeechToText {
   onResult(cb: (r: SttResult) => void) {
     this.resultCbs.add(cb);
     return () => void this.resultCbs.delete(cb);
+  }
+
+  /** Chrome delivers the last final result shortly after speech stops; give it a moment. */
+  async flush() {
+    await new Promise((r) => setTimeout(r, 350));
   }
 
   onError(cb: (m: string) => void) {

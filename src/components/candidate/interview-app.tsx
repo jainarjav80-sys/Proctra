@@ -56,9 +56,9 @@ export function InterviewApp({ token }: { token: string }) {
   }
 
   return (
-    <BrowserGate support={support}>
-      {step === "interview" && stream ? (
-        <InterviewStage token={token} session={session} stream={stream} />
+    <BrowserGate support={support} needSingleDisplay={session.proctoring.block_multi_monitor !== false}>
+      {step === "interview" && stream && devices ? (
+        <InterviewStage token={token} session={session} stream={stream} engine={devices.speechTest.engine} />
       ) : (
         <div className="mx-auto flex w-full max-w-4xl flex-col gap-8">
           <ol className="flex gap-2 text-xs text-muted-foreground" aria-label="Progress">
@@ -71,8 +71,10 @@ export function InterviewApp({ token }: { token: string }) {
             ))}
           </ol>
           {step === "consent" ? <ConsentStep token={token} session={session} onDone={() => setStep("devices")} /> : null}
-          {step === "devices" ? (
+          {step === "devices" && support ? (
             <DeviceStep
+              token={token}
+              support={support}
               onDone={(s, r) => {
                 setStream(s);
                 setDevices(r);
