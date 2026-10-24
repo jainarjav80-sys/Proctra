@@ -128,3 +128,15 @@ describe("P2 smoke: blueprint from fixture JD + resume", () => {
     LIVE ? 120_000 : 5_000,
   );
 });
+
+describe("P2 smoke: skill merge", () => {
+  it("keeps recruiter skills and skips AI near-duplicates", async () => {
+    const { mergeSkills } = await import("@/lib/jobs/analysis");
+    const merged = mergeSkills(
+      [{ name: "Kafka", mandatory: true, source: "RECRUITER" }],
+      [{ name: "Apache Kafka", mandatory: false }, { name: "Docker", mandatory: true }],
+    );
+    expect(merged.map((s) => s.name)).toEqual(["Kafka", "Docker"]);
+    expect(merged[0]).toMatchObject({ mandatory: true, source: "RECRUITER" });
+  });
+});
