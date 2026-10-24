@@ -38,7 +38,7 @@ export async function decideFollowUp(
     ].join("\n\n"),
     schema: followUpDecisionSchema,
     temperature: 0.3,
-    maxOutputTokens: 2000,
+    maxOutputTokens: 1500,
     reasoning: "low",
     signal: input.signal,
   });

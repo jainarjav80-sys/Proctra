@@ -1,6 +1,6 @@
 /**
  * P2 smoke: fixture JD + resume → parse → blueprint → schema-valid, exact 4/2/2/2 counts, no duplicates.
- * Default run uses a scripted LLM (offline, deterministic). `LIVE_LLM=1 npm test` uses Gemini→Groq from .env.local.
+ * Default run uses a scripted LLM (offline, deterministic). `LIVE_LLM=1 npm test` uses the live Groq chain from .env.local.
  */
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";

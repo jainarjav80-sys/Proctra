@@ -14,6 +14,6 @@ export async function GET() {
     database = error ? "error" : "ok";
     databaseError = error?.message;
   }
-  const ok = configured.supabase && configured.tokenSecret && (configured.gemini || configured.groq) && database === "ok";
+  const ok = configured.supabase && configured.tokenSecret && configured.groq && database === "ok";
   return NextResponse.json({ ok, configured, database, databaseError }, { status: ok ? 200 : 503 });
 }
