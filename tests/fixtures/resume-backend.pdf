@@ -1,0 +1,66 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [5 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+4 0 obj
+<< /Length 1747 >>
+stream
+BT
+/F1 10 Tf
+50 800 Td
+13 TL
+(Priya Raman) Tj T*
+(Senior Software Engineer) Tj T*
+() Tj T*
+(SUMMARY) Tj T*
+(Backend engineer with 6 years building Java and Spring Boot services in fintech. Led the migration of a monolithic payments system to event-driven microservices on Kafka.) Tj T*
+() Tj T*
+(EXPERIENCE) Tj T*
+(Senior Software Engineer, FinFlow Payments \(2021-03 to present\)) Tj T*
+(- Led the decomposition of the payments monolith into 9 Spring Boot microservices communicating over Apache Kafka.) Tj T*
+(- Designed idempotent payment-capture consumers with an outbox pattern, cutting duplicate charges to zero.) Tj T*
+(- Reduced p99 authorisation latency from 480 ms to 140 ms by tuning PostgreSQL indexes and HikariCP pools.) Tj T*
+(- On-call lead for the payments domain; ran 12 incident post-mortems.) Tj T*
+() Tj T*
+(Software Engineer, Ledgerly \(2018-07 to 2021-02\)) Tj T*
+(- Built REST APIs in Java 11 and Spring Boot for a double-entry ledger used by 200 merchants.) Tj T*
+(- Containerised services with Docker and deployed to Kubernetes using Helm.) Tj T*
+(- Wrote reconciliation jobs that matched bank settlement files against internal ledger entries.) Tj T*
+() Tj T*
+(PROJECTS) Tj T*
+(Kafka Replay Tool: Java, Spring Boot, Kafka Streams. CLI that replays dead-lettered events with schema validation.) Tj T*
+(Rate Limiter Service: Java, Redis. Token-bucket rate limiter shared by 30 internal services.) Tj T*
+() Tj T*
+(SKILLS) Tj T*
+(Java, Spring Boot, Apache Kafka, PostgreSQL, Docker, Kubernetes, Redis, REST, Microservices, JUnit, Git) Tj T*
+() Tj T*
+(EDUCATION) Tj T*
+(B.Tech Computer Science, National Institute of Technology Trichy, 2018) Tj T*
+() Tj T*
+(CERTIFICATIONS) Tj T*
+(AWS Certified Developer ? Associate) Tj T*
+ET
+endstream
+endobj
+5 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 3 0 R >> >> /Contents 4 0 R >>
+endobj
+xref
+0 6
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000115 00000 n 
+0000000185 00000 n 
+0000001984 00000 n 
+trailer
+<< /Size 6 /Root 1 0 R >>
+startxref
+2110
+%%EOF
