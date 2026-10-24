@@ -11,10 +11,10 @@ const schema = z.object({
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(20),
   TOKEN_SECRET: z.string().min(32, "TOKEN_SECRET must be at least 32 characters"),
   NEXT_PUBLIC_APP_URL: z.url().default("http://localhost:3000"),
-  GEMINI_API_KEY: z.string().optional(),
-  GEMINI_MODEL: z.string().default("gemini-2.5-flash"),
-  GROQ_API_KEY: z.string().optional(),
-  GROQ_MODEL: z.string().default("openai/gpt-oss-120b"),
+  GROQ_API_KEY: z.string().min(10, "GROQ_API_KEY is required"),
+  GROQ_FAST_MODEL: z.string().default("openai/gpt-oss-20b"),
+  GROQ_SMART_MODEL: z.string().default("openai/gpt-oss-120b"),
+  GROQ_FALLBACK_MODEL: z.string().default("qwen/qwen3.8-27b"),
   GROQ_STT_MODEL: z.string().default("whisper-large-v3-turbo"),
   LIVEKIT_URL: z.string().optional(),
   LIVEKIT_API_KEY: z.string().optional(),
@@ -42,7 +42,6 @@ export function envStatus() {
   return {
     supabase: has("NEXT_PUBLIC_SUPABASE_URL") && has("NEXT_PUBLIC_SUPABASE_ANON_KEY") && has("SUPABASE_SERVICE_ROLE_KEY"),
     tokenSecret: (process.env.TOKEN_SECRET?.length ?? 0) >= 32,
-    gemini: has("GEMINI_API_KEY"),
     groq: has("GROQ_API_KEY"),
     livekit: has("LIVEKIT_URL") && has("LIVEKIT_API_KEY") && has("LIVEKIT_API_SECRET"),
   };

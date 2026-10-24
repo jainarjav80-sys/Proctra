@@ -6,7 +6,7 @@ The active scope is the 10-hour prototype in [PROTOTYPE_PLAN.md](docs/PROTOTYPE_
 
 ## Stack
 
-Next.js 16 (App Router, TS strict, Tailwind v4, shadcn/ui) · Supabase (Postgres + Auth + Storage) · Gemini Flash with a Groq fallback · browser Web Speech STT and speechSynthesis TTS · MediaPipe + TF.js in the browser · LiveKit Cloud for the phone camera. Everything runs on free tiers.
+Next.js 16 (App Router, TS strict, Tailwind v4, shadcn/ui) · Supabase (Postgres + Auth + Storage) · Groq (gpt-oss-20b for live turns, gpt-oss-120b for analysis, Qwen fallback) · browser Web Speech STT and speechSynthesis TTS · MediaPipe + TF.js in the browser · LiveKit Cloud for the phone camera. Everything runs on free tiers.
 
 ## Setup (about 15 minutes)
 
@@ -14,10 +14,9 @@ Next.js 16 (App Router, TS strict, Tailwind v4, shadcn/ui) · Supabase (Postgres
    - In the SQL Editor, paste and run `supabase/migrations/0001_init.sql`.
    - For a fast demo, turn off email confirmation: Authentication → Sign In / Providers → Email → *Confirm email*.
    - Copy the project URL, anon (publishable) key and service_role (secret) key from Project Settings → API.
-2. **Gemini**: create a key at aistudio.google.com/apikey.
-3. **Groq** (optional fallback): create a key at console.groq.com/keys.
-4. **LiveKit** (needed from P4 for the phone camera): create a project at cloud.livekit.io and copy the URL, API key and secret.
-5. Set up the env file:
+2. **Groq**: create a key at console.groq.com/keys.
+3. **LiveKit** (needed from P4 for the phone camera): create a project at cloud.livekit.io and copy the URL, API key and secret.
+4. Set up the env file:
    ```bash
    cp .env.example .env.local
    ```
@@ -33,7 +32,7 @@ npm install
 npm run dev
 ```
 
-Check http://localhost:3000/api/health. It should return `"ok": true` once Supabase, the token secret and one LLM key are configured.
+Check http://localhost:3000/api/health. It should return `"ok": true` once Supabase, the token secret and the Groq key are configured.
 
 ```bash
 npm test

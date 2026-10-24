@@ -4,7 +4,7 @@ The production reference is [Implementation_plan.md](Implementation_plan.md). It
 
 ## Scope
 
-**In:** one Next.js app with three route groups: `(recruiter)`, `(candidate)` and `(companion)`. Supabase handles DB, auth and storage. Gemini is the LLM, with Groq as fallback. The browser does speech-to-text and text-to-speech. Proctoring runs in the browser. The phone camera connects over LiveKit via QR. Recordings use MediaRecorder. Evaluation quotes are verified. A recruiter report closes the loop. Candidates must use Chrome or Edge.
+**In:** one Next.js app with three route groups: `(recruiter)`, `(candidate)` and `(companion)`. Supabase handles DB, auth and storage. Groq is the only LLM provider (fast and smart tiers, each with a cross-model fallback). The browser does speech-to-text and text-to-speech. Proctoring runs in the browser. The phone camera connects over LiveKit via QR. Recordings use MediaRecorder. Evaluation quotes are verified. A recruiter report closes the loop. Candidates must use Chrome or Edge.
 
 **Out:** k8s/Helm/Terraform, GPU or Python workers, Celery, OTel/Grafana/Langfuse, OIDC, multi-tenant RBAC (one recruiter owns their own rows), pen-test, load testing, data-deletion workflows, eval harnesses, server-side lip-sync/diarization, composite evidence clips, PDF export.
 
@@ -27,8 +27,7 @@ Quotas change, so check each dashboard. Everything below is free tier, with no c
 | :--- | :--- | :--- | :--- |
 | **Supabase** (Free) | Postgres, Auth, Storage | 500 MB DB, 1 GB storage, **50 MB per file**, project pauses after 7 days idle | Create a project. Run `supabase/migrations/*.sql` in the SQL editor. Turn off "Confirm email" (Auth → Providers → Email) for a quick demo. Copy the URL, anon key and service-role key |
 | **Vercel** (Hobby) | Hosting | **4.5 MB request body** limit on functions, so uploads go straight to Supabase via signed URLs. Function timeout is limited (we set `maxDuration` 60) | Import the repo and add the env vars |
-| **Google AI Studio (Gemini)** | Primary LLM (Flash) | Per-minute and per-day request caps. Free-tier prompts may be used by Google, so use demo data only | Create an API key and set `GEMINI_API_KEY` |
-| **Groq** | Fallback LLM (Llama), optional Whisper STT | Requests/tokens per minute and per day | Create an API key and set `GROQ_API_KEY` |
+| **Groq** | Only LLM provider: `gpt-oss-20b` (live turns), `gpt-oss-120b` (analysis/evaluation), `qwen3.8-27b` (fallback) | Measured on this account: 1,000 requests/day and 8,000 tokens/min **per model** | Create an API key and set `GROQ_API_KEY` |
 | **LiveKit Cloud** (Build) | Phone camera stream | Monthly participant-minute quota | Create a project. Set `LIVEKIT_URL`, `LIVEKIT_API_KEY` and `LIVEKIT_API_SECRET` |
 | Web Speech API / speechSynthesis | STT / TTS | Chrome sends the audio to Google, so it needs a network connection. Recognition stops on silence, so we auto-restart it | Nothing |
 | MediaPipe Face Landmarker, TF.js COCO-SSD | Edge proctoring | Apache-2.0. Models load from CDN | Nothing |
@@ -39,7 +38,7 @@ Generate `TOKEN_SECRET` yourself with `openssl rand -base64 32`. See `.env.examp
 
 | Phase | Budget | Builds | PS coverage |
 | :--- | :--- | :--- | :--- |
-| **P1 Foundation** | 1.5 h | Scaffold. Supabase schema + RLS. Recruiter email/password auth. Design tokens. Signed candidate/pair tokens. LLM provider interface with Gemini and Groq JSON-schema output. STT/TTS client interfaces. `.env.example`. A skeleton that deploys to Vercel. Smoke test: tokens + default-10 | Groundwork for all of it |
+| **P1 Foundation** | 1.5 h | Scaffold. Supabase schema + RLS. Recruiter email/password auth. Design tokens. Signed candidate/pair tokens. LLM provider interface with JSON-schema output (Groq). STT/TTS client interfaces. `.env.example`. A skeleton that deploys to Vercel. Smoke test: tokens + default-10 | Groundwork for all of it |
 | **P2 Recruiter setup** | 1.5 h | Job + JD + skills. Resume upload (signed URL) + parse (`pdf-parse` / `mammoth`) + LLM extraction. LLM question blueprint (category split, difficulty, dedup, custom questions, editable). Config with the timing-fit check. Signed invite link | 3.A (config, resume extraction, defaults), 3.B |
 | **P3 AI interview** | 2.5 h | Onboarding: browser gate, itemized consent, camera/mic check, fullscreen, display audit. Interview loop: TTS question → STT answer → LLM decides follow-up or advance (respects the follow-up cap and time buffer; handles repeat/skip/"I don't know"; silence ladder). Server-side FSM state in the DB. Transcript stored per question, with statuses | 3.A onboarding, 3.C |
 | **P4 Proctoring + phone cam** | 2 h | Face count, gaze/head pose (with grace window), COCO-SSD for phone/book/person, visibility/blur/fullscreen, multi-monitor (Window Management API), paste/devtools heuristics, camera/mic loss. Event log + snapshots on HIGH events + suspicion rules. Companion QR → LiveKit → desktop subscribes, runs detection, logs disconnects. Chunked recording upload | 3.D, 3.E |

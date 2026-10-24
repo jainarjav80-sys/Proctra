@@ -117,7 +117,7 @@ export async function generateBlueprint(llm: LLMProvider, input: BlueprintInput)
     ].join("\n\n"),
     schema: blueprintResponseSchema,
     temperature: 0.6,
-    maxOutputTokens: 12000,
+    maxOutputTokens: 6000,
   });
 
   return selectQuestions(response.questions, targets, input.manual.map((m) => m.text));

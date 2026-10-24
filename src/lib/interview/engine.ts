@@ -237,7 +237,7 @@ export async function processTurn(admin: Admin, interview: CandidateInterview, i
         .neq("id", current.id)
         .order("primary_index", { ascending: false })
         .limit(3);
-      const fu = await decideFollowUp(llm(), {
+      const fu = await decideFollowUp(llm("fast"), {
         question: current.text,
         rubricPoints: current.rubric?.rubric_points ?? [],
         answer: current.transcript ?? spoken,
