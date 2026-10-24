@@ -22,6 +22,7 @@ export class GroqProvider implements LLMProvider {
           temperature: req.temperature ?? 0.4,
           max_tokens: req.maxOutputTokens ?? 8192,
           response_format: { type: "json_object" },
+          ...(/gpt-oss/.test(this.model) ? { reasoning_effort: req.reasoning ?? "medium", include_reasoning: false } : {}),
           messages: [
             { role: "system", content: `${req.system}\n\n${schemaInstruction(req.schema)}` },
             { role: "user", content: req.prompt },
