@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 /** Candidate-safe view of the interview: no rubric, resume or evaluation data. */
 export async function GET(req: Request) {
   try {
-    const { admin, interview } = await requireCandidate(req.headers.get(CANDIDATE_TOKEN_HEADER));
+    const { admin, interview } = await requireCandidate(req.headers.get(CANDIDATE_TOKEN_HEADER), req);
     const { count } = await admin
       .from("questions")
       .select("id", { count: "exact", head: true })
