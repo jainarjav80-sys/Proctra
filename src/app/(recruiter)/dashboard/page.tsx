@@ -1,5 +1,5 @@
-import { requireRecruiter } from "@/lib/auth";
-import { RecruiterHeader } from "@/components/recruiter-header";
+import { requireRecruiter } from "@/lib/auth/recruiter";
+import { RecruiterHeader } from "@/components/recruiter/recruiter-header";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 

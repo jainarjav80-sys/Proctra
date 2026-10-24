@@ -2,7 +2,7 @@
 
 AI-led video interviews with browser-side proctoring and an optional phone camera. Every proctoring flag goes to a human for review, and the AI never makes the hiring decision.
 
-The active scope is the 10-hour prototype in [PROTOTYPE_PLAN.md](PROTOTYPE_PLAN.md). The specs live in [docs/](docs/).
+The active scope is the 10-hour prototype in [PROTOTYPE_PLAN.md](docs/PROTOTYPE_PLAN.md). The specs live in [docs/](docs/).
 
 ## Stack
 

@@ -1,4 +1,4 @@
-> **Active plan:** this document is the long-term production reference. The active plan is the 10-hour prototype in [PROTOTYPE_PLAN.md](../PROTOTYPE_PLAN.md).
+> **Active plan:** this document is the long-term production reference. The active plan is the 10-hour prototype in [PROTOTYPE_PLAN.md](PROTOTYPE_PLAN.md).
 
 # Implementation Plan — AI Video Interview Agent with Intelligent Proctoring
 

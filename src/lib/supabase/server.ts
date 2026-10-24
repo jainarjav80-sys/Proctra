@@ -1,7 +1,7 @@
 import "server-only";
 import { cookies } from "next/headers";
 import { createServerClient } from "@supabase/ssr";
-import { env } from "@/lib/env";
+import { env } from "@/lib/config/env";
 
 /** Per-request server client acting as the signed-in recruiter (RLS applies). */
 export async function createClient() {

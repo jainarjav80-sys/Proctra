@@ -1,5 +1,5 @@
 import "server-only";
-import { env } from "@/lib/env";
+import { env } from "@/lib/config/env";
 import { FallbackProvider } from "./fallback";
 import { GeminiProvider } from "./gemini";
 import { GroqProvider } from "./groq";

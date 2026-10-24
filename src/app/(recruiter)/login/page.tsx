@@ -1,5 +1,5 @@
-import { AuthForm } from "@/components/auth-form";
-import { login } from "../actions";
+import { AuthForm } from "@/components/auth/auth-form";
+import { login } from "../_actions/auth";
 
 export default async function LoginPage({ searchParams }: PageProps<"/login">) {
   const { next } = await searchParams;

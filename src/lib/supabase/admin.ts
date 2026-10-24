@@ -1,6 +1,6 @@
 import "server-only";
 import { createClient } from "@supabase/supabase-js";
-import { env } from "@/lib/env";
+import { env } from "@/lib/config/env";
 
 /**
  * Service-role client: bypasses RLS. Only call it from route handlers after verifying a

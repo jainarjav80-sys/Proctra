@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { logout } from "@/app/(recruiter)/actions";
+import { logout } from "@/app/(recruiter)/_actions/auth";
 import { Button } from "@/components/ui/button";
 
 export function RecruiterHeader({ email }: { email: string }) {
