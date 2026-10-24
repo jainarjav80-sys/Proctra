@@ -9,6 +9,8 @@ export interface JsonRequest<T> {
   schema: z.ZodType<T>;
   temperature?: number;
   maxOutputTokens?: number;
+  /** Reasoning effort for reasoning models (Groq gpt-oss). Live turns use "low" for latency. */
+  reasoning?: "low" | "medium" | "high";
   signal?: AbortSignal;
 }
 
