@@ -65,14 +65,23 @@ export async function analyzeJob(llm: LLMProvider, job: JobInput): Promise<JdAna
   });
 }
 
+const skillKey = (name: string) => name.toLowerCase().replace(/[^a-z0-9+#.]+/g, " ").trim();
+
+/** Same skill if equal or one name contains the other as whole words ("Kafka" vs "Apache Kafka"). */
+function sameSkill(a: string, b: string) {
+  if (a === b) return true;
+  const [short, long] = a.length <= b.length ? [a, b] : [b, a];
+  return short.length >= 2 && ` ${long} `.includes(` ${short} `);
+}
+
 /** Recruiter-entered skills win: AI skills are added only when the recruiter didn't list them. */
 export function mergeSkills(recruiter: JobSkill[], ai: JdAnalysis["skills"]): JobSkill[] {
   const merged: JobSkill[] = recruiter.filter((s) => s.source === "RECRUITER");
-  const seen = new Set(merged.map((s) => s.name.trim().toLowerCase()));
+  const seen = merged.map((s) => skillKey(s.name));
   for (const s of ai) {
-    const key = s.name.trim().toLowerCase();
-    if (!key || seen.has(key)) continue;
-    seen.add(key);
+    const key = skillKey(s.name);
+    if (!key || seen.some((k) => sameSkill(k, key))) continue;
+    seen.push(key);
     merged.push({ name: s.name.trim(), mandatory: s.mandatory, source: "AI" });
   }
   return merged;
