@@ -61,7 +61,7 @@ export function DisplayStep({
       if (needFullscreen && !document.fullscreenElement) await document.documentElement.requestFullscreen();
       await candidateFetch(token, "preflight", {
         body: {
-          browser: { userAgent: support.userAgent.slice(0, 500), chromium: support.chromium, speechRecognition: support.speechRecognition },
+          browser: { userAgent: support.userAgent.slice(0, 500), family: support.info.family, chromium: support.info.chromium, speechRecognition: support.speechApi },
           ...devices,
           display: { fullscreen: Boolean(document.fullscreenElement), isExtended: t.isExtended, screenCount: t.screenCount },
         },

@@ -2,10 +2,19 @@ import { z } from "zod";
 import { CANDIDATE_TOKEN_HEADER, candidateError, requireCandidate } from "@/lib/candidate/session";
 
 const body = z.object({
-  browser: z.object({ userAgent: z.string().max(500), chromium: z.boolean(), speechRecognition: z.boolean() }),
+  browser: z.object({ userAgent: z.string().max(500), family: z.string().max(30), chromium: z.boolean(), speechRecognition: z.boolean() }),
   camera: z.object({ ok: z.boolean(), label: z.string().max(200).nullable(), width: z.number().nullable(), height: z.number().nullable() }),
   microphone: z.object({ ok: z.boolean(), label: z.string().max(200).nullable(), peakLevel: z.number().min(0).max(1) }),
-  speechTest: z.object({ ok: z.boolean(), heard: z.string().max(300) }),
+  speechTest: z.object({ ok: z.boolean(), heard: z.string().max(300), engine: z.enum(["web-speech", "groq-whisper"]), nativeError: z.string().max(50).nullable() }),
+  audio: z.object({
+    headphoneLabelMatch: z.boolean(),
+    echoTest: z.union([
+      z.object({ ran: z.literal(true), baselineRms: z.number(), duringRms: z.number(), ratio: z.number(), result: z.enum(["pass", "warn"]) }),
+      z.object({ ran: z.literal(false) }),
+    ]),
+    candidateConfirmedHeadphones: z.boolean(),
+    detection: z.enum(["labels", "echo-test", "candidate-confirmed", "none"]),
+  }),
   display: z.object({ fullscreen: z.boolean(), isExtended: z.boolean().nullable(), screenCount: z.number().int().nullable() }),
 });
 
@@ -23,7 +32,7 @@ export async function POST(req: Request) {
     }
     const { error } = await admin
       .from("interviews")
-      .update({ preflight: { ...p, at: new Date().toISOString() } })
+      .update({ preflight: { ...p, stt_engine: p.speechTest.engine, at: new Date().toISOString() } })
       .eq("id", interview.id);
     if (error) throw new Error(error.message);
     return Response.json({ ok: true });
