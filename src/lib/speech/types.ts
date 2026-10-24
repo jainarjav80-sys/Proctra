@@ -13,9 +13,13 @@ export interface SpeechToText {
   start(): void;
   stop(): void;
   onResult(cb: (r: SttResult) => void): () => void;
-  /** Fatal errors only (e.g. permission denied, no network). Transient stops are auto-restarted. */
-  onError(cb: (message: string) => void): () => void;
+  /** Raw error code (Web Speech codes such as "network", "not-allowed"; map with mapSttError). */
+  onError(cb: (code: string) => void): () => void;
+  /** Waits until speech captured so far has been delivered as final results. */
+  flush(): Promise<void>;
 }
+
+export type SttEngine = "web-speech" | "groq-whisper";
 
 export interface SpeakOptions {
   /** Called with the character index as each word starts (drives captions/avatar). */

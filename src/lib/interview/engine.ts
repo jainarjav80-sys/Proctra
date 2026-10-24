@@ -47,6 +47,8 @@ export const turnSchema = z.object({
     .default([]),
   /** What the candidate said in the first ~15 s of answering (question-echo check). */
   openingText: z.string().max(4000).default(""),
+  /** Which speech engine produced this turn's transcript. */
+  sttEngine: z.enum(["web-speech", "groq-whisper", "typed"]).optional(),
 });
 export type TurnInput = z.infer<typeof turnSchema>;
 
@@ -179,6 +181,13 @@ export async function processTurn(admin: Admin, interview: CandidateInterview, i
 
   const now = elapsedMs(interview);
   const current = await loadQuestion(admin, state.questionId);
+
+  // Record speech-engine switches (e.g. native recognition failed mid-interview → Whisper or typed).
+  const pre = (interview.preflight ?? {}) as { stt_engine?: string; stt_engines_used?: string[] };
+  if (input.sttEngine && !(pre.stt_engines_used ?? [pre.stt_engine]).includes(input.sttEngine)) {
+    const used = [...new Set([...(pre.stt_engines_used ?? (pre.stt_engine ? [pre.stt_engine] : [])), input.sttEngine])];
+    await admin.from("interviews").update({ preflight: { ...pre, stt_engines_used: used, stt_switched_at_ms: now } }).eq("id", interview.id);
+  }
 
   // Record what the candidate said, even for meta requests, so the transcript is complete.
   const spoken = input.transcript.trim();

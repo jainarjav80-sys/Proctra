@@ -68,3 +68,17 @@ export async function withReconnect<T>(fn: () => Promise<T>, onRetry: (attempt: 
     }
   }
 }
+
+/** Uploads one VAD-cut audio segment for server-side (Whisper) transcription. */
+export async function transcribeAudio(token: string, audio: Blob): Promise<{ text: string; confidence: number | null }> {
+  const form = new FormData();
+  form.set("audio", audio, audio.type.includes("ogg") ? "segment.ogg" : "segment.webm");
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const res = await fetch("/api/candidate/stt", { method: "POST", headers: { "x-proctra-token": token }, body: form });
+    const json = await res.json().catch(() => ({}));
+    if (res.ok) return json as { text: string; confidence: number | null };
+    if (res.status !== 503 || attempt === 2) throw new ApiError((json as { error?: string }).error ?? `Transcription failed (${res.status})`, res.status, json);
+    await new Promise((r) => setTimeout(r, 800 * (attempt + 1)));
+  }
+  throw new ApiError("Speech service busy", 503);
+}

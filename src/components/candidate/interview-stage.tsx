@@ -5,9 +5,12 @@ import { BrowserTTS } from "@/lib/speech/browser-tts";
 import { EnergyVAD } from "@/lib/speech/energy-vad";
 import { splitSentences } from "@/lib/speech/sentences";
 import { WebSpeechSTT } from "@/lib/speech/web-speech-stt";
+import { WhisperSTT } from "@/lib/speech/whisper-stt";
+import { mapSttError } from "@/lib/speech/stt-errors";
+import type { SpeechToText, SttEngine } from "@/lib/speech/types";
 import { classifyIntent } from "@/lib/interview/fsm";
 import type { ClientQuestion, InterviewAction } from "@/lib/interview/engine";
-import { ApiError, candidateFetch, withReconnect, type CandidateSession, type TurnResponse } from "./api";
+import { ApiError, candidateFetch, transcribeAudio, withReconnect, type CandidateSession, type TurnResponse } from "./api";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 
@@ -35,10 +38,11 @@ const NO_RE = /\b(no|nope|nah|i'?m good|it'?s fine|that'?s fine|not needed)\b/i;
 
 const fmt = (sec: number) => `${Math.floor(Math.max(0, sec) / 60)}:${String(Math.floor(Math.max(0, sec) % 60)).padStart(2, "0")}`;
 
-export function InterviewStage({ token, session, stream }: { token: string; session: CandidateSession; stream: MediaStream }) {
+export function InterviewStage({ token, session, stream, engine: initialEngine }: { token: string; session: CandidateSession; stream: MediaStream; engine: SttEngine }) {
   const selfView = useRef<HTMLVideoElement>(null);
   const tts = useRef<BrowserTTS | null>(null);
-  const stt = useRef<WebSpeechSTT | null>(null);
+  const stt = useRef<SpeechToText | null>(null);
+  const sttEngine = useRef<SttEngine>(initialEngine);
   const vad = useRef<EnergyVAD | null>(null);
 
   const [phase, setPhase] = useState<Phase>("starting");
@@ -235,6 +239,7 @@ export function InterviewStage({ token, session, stream }: { token: string; sess
       stopListening();
       setPhase("submitting");
       setHint(null);
+      await stt.current?.flush(); // Whisper: wait for the last segment's transcript
       const text = (typedMode ? typed : st.finals.map((f) => f.text).join(" ")).trim();
       const confs = st.finals.map((f) => f.confidence).filter((c): c is number => typeof c === "number" && c > 0);
       const answerStartRel = Math.max(0, st.listenStartedAt - st.startedAt);
@@ -248,6 +253,7 @@ export function InterviewStage({ token, session, stream }: { token: string; sess
         segments: typedMode ? [] : st.finals,
         bargeIns: st.bargeIns,
         openingText: opening,
+        sttEngine: typedMode ? "typed" : sttEngine.current,
       };
       try {
         const res = await withReconnect(
@@ -337,9 +343,17 @@ export function InterviewStage({ token, session, stream }: { token: string; sess
   // ---- setup: speech engines, VAD + start/resume -----------------------------------------------
   useEffect(() => {
     tts.current = new BrowserTTS();
-    const rec = new WebSpeechSTT();
-    stt.current = rec;
-    const offResult = rec.onResult((r) => {
+    const offs: (() => void)[] = [];
+    const attach = (engine: SttEngine) => {
+      offs.splice(0).forEach((off) => off());
+      stt.current?.stop();
+      if (stt.current instanceof WhisperSTT) stt.current.dispose();
+      const rec: SpeechToText = engine === "web-speech" ? new WebSpeechSTT() : new WhisperSTT((blob) => transcribeAudio(token, blob));
+      sttEngine.current = engine;
+      stt.current = rec;
+      offs.push(rec.onResult(onSttResult), rec.onError(onSttError));
+    };
+    const onSttResult = (r: Parameters<Parameters<SpeechToText["onResult"]>[0]>[0]) => {
       const st = s.current;
       const now = rel();
       if (!st.spoke) st.segStart = now;
@@ -356,11 +370,25 @@ export function InterviewStage({ token, session, stream }: { token: string; sess
       } else {
         setInterim(r.text);
       }
-    });
-    const offError = rec.onError((m) => {
+    };
+    const onSttError = (code: string) => {
+      const info = mapSttError(code, navigator.onLine);
+      if (info.kind === "transient") return;
+      if (sttEngine.current === "web-speech" && info.useServerFallback) {
+        // Native engine died mid-interview: carry on with server Whisper, same loop.
+        setError("Switched to Proctra's speech service. Keep talking as normal.");
+        attach("groq-whisper");
+        if (!s.current.busy) stt.current?.start(); // errors only arrive while we were listening
+        return;
+      }
+      if (info.kind === "offline") {
+        setError(info.message);
+        return;
+      }
       setTypedMode(true);
-      setError(m === "network" ? "Speech recognition lost its connection. You can type your answer below." : `Speech recognition unavailable (${m}). You can type your answer below.`);
-    });
+      setError(`${sttEngine.current === "groq-whisper" ? "The speech service isn't responding." : info.message} You can type your answer below.`);
+    };
+    attach(initialEngine);
 
     const detector = new EnergyVAD();
     vad.current = detector;
@@ -390,11 +418,11 @@ export function InterviewStage({ token, session, stream }: { token: string; sess
     })();
     return () => {
       cancelled = true;
-      offResult();
-      offError();
+      offs.forEach((off) => off());
       offVad?.();
       detector.stop();
-      rec.stop();
+      stt.current?.stop();
+      if (stt.current instanceof WhisperSTT) stt.current.dispose();
       tts.current?.cancel();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- run once per mount

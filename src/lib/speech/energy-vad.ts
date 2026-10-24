@@ -15,6 +15,7 @@ export class EnergyVAD {
   private speaking = false;
   private listeners = new Set<(e: "start" | "end") => void>();
   private calibrateUntil = 0;
+  private ownsStream = true;
   armed = false;
 
   constructor(
@@ -23,10 +24,14 @@ export class EnergyVAD {
     private readonly minThreshold = 0.03,
   ) {}
 
-  async start() {
-    this.stream = await navigator.mediaDevices.getUserMedia({
-      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-    });
+  /** Pass a stream to share one capture (e.g. with a MediaRecorder); otherwise opens its own. */
+  async start(stream?: MediaStream) {
+    this.ownsStream = !stream;
+    this.stream =
+      stream ??
+      (await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+      }));
     this.ctx = new AudioContext();
     const analyser = this.ctx.createAnalyser();
     analyser.fftSize = 1024;
@@ -87,7 +92,7 @@ export class EnergyVAD {
 
   stop() {
     cancelAnimationFrame(this.raf);
-    this.stream?.getTracks().forEach((t) => t.stop());
+    if (this.ownsStream) this.stream?.getTracks().forEach((t) => t.stop());
     void this.ctx?.close();
     this.ctx = null;
   }
