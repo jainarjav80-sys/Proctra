@@ -7,6 +7,7 @@ import { WhisperSTT } from "@/lib/speech/whisper-stt";
 import { mapSttError } from "@/lib/speech/stt-errors";
 import { headphoneLabelMatch, judgeEcho, meterLevel, realInputs, resolveInputLabel, smoothLevel, type DeviceLike, type EchoTestResult } from "@/lib/speech/audio-checks";
 import type { SpeechToText, SttEngine } from "@/lib/speech/types";
+import { FaceTracker } from "@/lib/proctoring/edge/vision";
 import { transcribeAudio } from "../api";
 import type { BrowserSupport } from "./browser-gate";
 import { NativeSelect } from "@/components/forms/native-select";
@@ -17,6 +18,7 @@ export interface DeviceResult {
   camera: { ok: boolean; label: string | null; width: number | null; height: number | null };
   microphone: { ok: boolean; label: string | null; peakLevel: number };
   speechTest: { ok: boolean; heard: string; engine: SttEngine; nativeError: string | null };
+  faceCheck: { status: "passed" | "unavailable"; faces: number };
   audio: {
     headphoneLabelMatch: boolean;
     echoTest: (EchoTestResult & { ran: true }) | { ran: false };
@@ -62,6 +64,9 @@ export function DeviceStep({ token, support, onDone }: { token: string; support:
   const [echo, setEcho] = useState<EchoTestResult | null>(null);
   const [echoRunning, setEchoRunning] = useState(false);
   const [confirmedHeadphones, setConfirmedHeadphones] = useState(false);
+  const [faceStatus, setFaceStatus] = useState<"loading" | "ready" | "unavailable">("loading");
+  const [faces, setFaces] = useState<number | null>(null);
+  const [faceStable, setFaceStable] = useState(false);
 
   async function open(audioDeviceId?: string) {
     setError(null);
@@ -114,6 +119,39 @@ export function DeviceStep({ token, support, onDone }: { token: string; support:
   }, [stream]);
 
   const runProbeRef = useRef<((e: SttEngine) => void) | null>(null);
+
+  // Face gate: exactly one face, held for 1.5 s, before continuing (MediaPipe, runs locally).
+  useEffect(() => {
+    if (!stream || !video.current) return;
+    let tracker: FaceTracker | null = null;
+    let timer: ReturnType<typeof setInterval> | undefined;
+    let oneSince = 0;
+    let alive = true;
+    FaceTracker.create()
+      .then((t) => {
+        if (!alive) return t.close();
+        tracker = t;
+        setFaceStatus("ready");
+        timer = setInterval(() => {
+          const f = video.current && tracker?.detect(video.current, performance.now());
+          if (!f) return;
+          setFaces(f.faces);
+          if (f.faces === 1) {
+            oneSince ||= performance.now();
+            if (performance.now() - oneSince >= 1500) setFaceStable(true);
+          } else {
+            oneSince = 0;
+            setFaceStable(false);
+          }
+        }, 250);
+      })
+      .catch(() => alive && setFaceStatus("unavailable"));
+    return () => {
+      alive = false;
+      if (timer) clearInterval(timer);
+      tracker?.close();
+    };
+  }, [stream]);
 
   const finishProbe = useCallback((stt: SpeechToText, text: string) => {
     stt.stop();
@@ -211,7 +249,8 @@ export function DeviceStep({ token, support, onDone }: { token: string; support:
   const inputLabel = aTrack ? resolveInputLabel(aTrack.label, currentInput, devices) : "";
   const labelsSayHeadphones = headphoneLabelMatch(devices);
   const headphonesOk = labelsSayHeadphones || echo?.result === "pass" || confirmedHeadphones;
-  const ok = Boolean(stream) && heard.trim().split(/\s+/).length >= 2;
+  const faceOk = faceStatus === "unavailable" || faceStable;
+  const ok = Boolean(stream) && heard.trim().split(/\s+/).length >= 2 && faceOk;
 
   return (
     <div className="flex flex-col gap-5">
@@ -232,6 +271,19 @@ export function DeviceStep({ token, support, onDone }: { token: string; support:
               <p className="text-muted-foreground">{vTrack?.label || "Camera"}</p>
               <p className="font-mono text-xs text-muted-foreground">
                 {settings?.width}×{settings?.height}
+              </p>
+              <p data-testid="face-check" className={`mt-1 ${faceStatus === "ready" && !faceStable ? "text-warning" : faceStable ? "text-success" : "text-muted-foreground"}`}>
+                {faceStatus === "loading"
+                  ? "Checking framing…"
+                  : faceStatus === "unavailable"
+                    ? "Face check unavailable on this device."
+                    : faces === 0
+                      ? "We can't see your face. Centre yourself and improve the lighting."
+                      : faces !== null && faces > 1
+                        ? `${faces} faces in view. Only you should be in the frame. Ask others to step out.`
+                        : faceStable
+                          ? "✓ One face, well framed."
+                          : "Hold still for a moment…"}
               </p>
             </div>
             <div className="flex flex-col gap-1">
@@ -316,6 +368,7 @@ export function DeviceStep({ token, support, onDone }: { token: string; support:
               camera: { ok: Boolean(vTrack), label: vTrack?.label ?? null, width: settings?.width ?? null, height: settings?.height ?? null },
               microphone: { ok: Boolean(aTrack), label: inputLabel || null, peakLevel: Math.round(peak.current * 100) / 100 },
               speechTest: { ok: true, heard: heard.slice(0, 300), engine, nativeError },
+              faceCheck: { status: faceStatus === "unavailable" ? "unavailable" : "passed", faces: faces ?? 0 },
               audio: {
                 headphoneLabelMatch: labelsSayHeadphones,
                 echoTest: echo ? { ...echo, ran: true } : { ran: false },

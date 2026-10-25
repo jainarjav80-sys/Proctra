@@ -6,6 +6,8 @@ const body = z.object({
   camera: z.object({ ok: z.boolean(), label: z.string().max(200).nullable(), width: z.number().nullable(), height: z.number().nullable() }),
   microphone: z.object({ ok: z.boolean(), label: z.string().max(200).nullable(), peakLevel: z.number().min(0).max(1) }),
   speechTest: z.object({ ok: z.boolean(), heard: z.string().max(300), engine: z.enum(["web-speech", "groq-whisper"]), nativeError: z.string().max(50).nullable() }),
+  secondaryCamera: z.object({ paired: z.boolean() }).optional(),
+  faceCheck: z.object({ status: z.enum(["passed", "unavailable"]), faces: z.number().int().min(0).max(10) }).optional(),
   audio: z.object({
     headphoneLabelMatch: z.boolean(),
     echoTest: z.union([
@@ -27,6 +29,9 @@ export async function POST(req: Request) {
     if (!parsed.success) return Response.json({ error: "Invalid preflight payload" }, { status: 400 });
     const p = parsed.data;
     if (!p.camera.ok || !p.microphone.ok) return Response.json({ error: "Camera and microphone are required" }, { status: 400 });
+    if (interview.secondary_cam_policy === "MANDATORY" && !p.secondaryCamera?.paired) {
+      return Response.json({ error: "This interview requires your phone camera to be connected" }, { status: 400 });
+    }
     if (interview.proctoring_config?.block_multi_monitor !== false && (p.display.isExtended || (p.display.screenCount ?? 1) > 1)) {
       return Response.json({ error: "Disconnect extra displays before starting" }, { status: 400 });
     }
