@@ -1,6 +1,21 @@
 import "server-only";
 import { parseRetryAfterMs } from "@/lib/llm/groq";
 
+const wordsOf = (t: string) => t.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [];
+
+/**
+ * Whisper sometimes "transcribes" its own prompt when the audio is near-silent. Treat output whose
+ * words are almost all prompt words (and isn't longer than the prompt) as a hallucination.
+ */
+export function isPromptEcho(text: string, prompt: string | undefined): boolean {
+  if (!prompt) return false;
+  const out = wordsOf(text);
+  if (!out.length) return false;
+  const vocab = new Set(wordsOf(prompt));
+  const inPrompt = out.filter((w) => vocab.has(w)).length / out.length;
+  return inPrompt >= 0.85 && out.length <= wordsOf(prompt).length * 1.5;
+}
+
 export const WHISPER_MODELS = ["whisper-large-v3-turbo", "whisper-large-v3"] as const;
 export const MAX_AUDIO_BYTES = 8 * 1024 * 1024;
 
@@ -43,7 +58,8 @@ export async function transcribe(audio: Blob, opts: { prompt?: string; signal?: 
     if (!res.ok) throw new Error(`Whisper ${model} HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`);
     const json = (await res.json()) as { text?: string; duration?: number; segments?: VerboseSegment[] };
     const segments = (json.segments ?? []).filter((s) => !(s.no_speech_prob > 0.6 && s.avg_logprob < -0.7));
-    const text = (json.segments ? segments.map((s) => s.text).join("") : (json.text ?? "")).trim();
+    let text = (json.segments ? segments.map((s) => s.text).join("") : (json.text ?? "")).trim();
+    if (isPromptEcho(text, opts.prompt)) text = "";
     const confidence = segments.length ? Math.exp(segments.reduce((a, s) => a + s.avg_logprob, 0) / segments.length) : null;
     return { text, confidence: confidence === null ? null : Math.round(confidence * 1000) / 1000, durationSec: json.duration ?? null, model };
   }
