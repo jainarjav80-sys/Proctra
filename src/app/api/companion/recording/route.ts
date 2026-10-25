@@ -32,7 +32,7 @@ export async function POST(req: Request) {
     return Response.json({ error: "Phone recording is not enabled" }, { status: 403 });
   }
   if (!["IN_PROGRESS", "PAUSED"].includes(iv.status) || !iv.started_at) return Response.json({ error: "The interview hasn't started", notStarted: true }, { status: 409 });
-  const pausedMs = (iv.fsm_state as { pausedTotalMs?: number } | null)?.pausedTotalMs ?? 0;
-  const startedMs = Math.max(0, Date.now() - new Date(iv.started_at).getTime() - pausedMs - 10_000);
+  // Wall-clock offset (same basis as the review timeline); only the session's first chunk sets it.
+  const startedMs = Math.max(0, Date.now() - new Date(iv.started_at).getTime() - 10_000);
   return Response.json(await signChunkUpload(admin, interviewId, "SECONDARY", parsed.data.session, startedMs, parsed.data.seq));
 }
