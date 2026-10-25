@@ -76,12 +76,33 @@ export class KokoroTTS implements TextToSpeech {
   }
 
   prefetch(text: string) {
-    void this.synth(text).catch(() => {});
+    for (const part of KokoroTTS.clauses(text)) void this.synth(part).catch(() => {});
+  }
+
+  /** Long sentences are spoken as two clauses: the first clause is synthesised (and heard) sooner. */
+  private static clauses(text: string): string[] {
+    if (text.length < 90) return [text];
+    const m = /^(.{30,}?[,;:—])\s+(.{20,})$/.exec(text);
+    return m ? [m[1], m[2]] : [text];
   }
 
   // Word-boundary callbacks (SpeakOptions) aren't available from Kokoro; captions show the full sentence.
   async speak(text: string): Promise<void> {
-    this.cancel();
+    const parts = KokoroTTS.clauses(text);
+    if (parts.length > 1) {
+      this.prefetch(parts[1]);
+      const gen = ++this.generation;
+      await this.speakOne(parts[0]);
+      if (gen !== this.generation) return; // cancelled between clauses
+      return this.speakOne(parts[1]);
+    }
+    return this.speakOne(text);
+  }
+
+  private generation = 0;
+
+  private async speakOne(text: string): Promise<void> {
+    this.stopAudio();
     let blob: Blob;
     try {
       blob = await this.synth(text);
@@ -111,8 +132,13 @@ export class KokoroTTS implements TextToSpeech {
     });
   }
 
-  cancel() {
+  private stopAudio() {
     this.audio?.pause();
     this.pendingResolve?.();
+  }
+
+  cancel() {
+    this.generation++;
+    this.stopAudio();
   }
 }

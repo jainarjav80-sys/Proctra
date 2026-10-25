@@ -1,10 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { getTts } from "@/lib/speech/tts";
+import { getTts, setTtsToken } from "@/lib/speech/tts";
 import { SentenceSpeaker } from "@/lib/speech/sentence-speaker";
 import { EnergyVAD } from "@/lib/speech/energy-vad";
-import { splitSentences } from "@/lib/speech/sentences";
+import { chunkForSpeech } from "@/lib/speech/sentences";
 import { WebSpeechSTT } from "@/lib/speech/web-speech-stt";
 import { WhisperSTT } from "@/lib/speech/whisper-stt";
 import { mapSttError } from "@/lib/speech/stt-errors";
@@ -69,6 +69,7 @@ export function InterviewStage({
   const speaker = useRef<SentenceSpeaker | null>(null);
   const stt = useRef<SpeechToText | null>(null);
   const sttEngine = useRef<SttEngine>(initialEngine);
+  const ttsEngineUsed = useRef<TtsEngine>(ttsEngine);
   const vad = useRef<EnergyVAD | null>(null);
 
   const [phase, setPhase] = useState<Phase>("starting");
@@ -184,7 +185,7 @@ export function InterviewStage({
     [stopListening],
   );
 
-  const speak = useCallback((text: string) => speakSentences(splitSentences(text), 0, { question: false }), [speakSentences]);
+  const speak = useCallback((text: string) => speakSentences(chunkForSpeech(text), 0, { question: false }), [speakSentences]);
 
   /** fresh = a new answer attempt (new question or clarify). Resuming after a nudge keeps the clock
    *  and nudge count, so the silence ladder runs 8 s → 20 s → 30 s in total, not per nudge. */
@@ -211,8 +212,8 @@ export function InterviewStage({
   /** Reads the current question (optionally resuming at a sentence), then listens for the answer. */
   const askQuestion = useCallback(
     async (lead: string, q: ClientQuestion, from = 0) => {
-      const leadSentences = splitSentences(lead);
-      const qSentences = splitSentences(q.text);
+      const leadSentences = chunkForSpeech(lead);
+      const qSentences = chunkForSpeech(q.text);
       const all = [...leadSentences, ...qSentences];
       const result = await speakSentences(all, from, { question: true, questionFrom: leadSentences.length, caption: q.text });
       setCaption(q.text);
@@ -308,6 +309,7 @@ export function InterviewStage({
         bargeIns: st.bargeIns,
         openingText: opening,
         sttEngine: typedMode ? "typed" : sttEngine.current,
+        ttsEngine: ttsEngineUsed.current,
       };
       try {
         const res = await withReconnect(
@@ -396,12 +398,14 @@ export function InterviewStage({
 
   // ---- setup: speech engines, VAD + start/resume -----------------------------------------------
   useEffect(() => {
+    setTtsToken(token);
     speaker.current = new SentenceSpeaker(getTts(ttsEngine), {
       onSentenceStart: (i) => {
         s.current.sentenceIdx = i;
         vad.current?.calibrate(); // re-learn the echo level as each sentence starts
       },
       onProblem: setError,
+      onEngineChange: (e) => (ttsEngineUsed.current = e),
     });
     const offs: (() => void)[] = [];
     const attach = (engine: SttEngine) => {

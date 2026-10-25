@@ -38,6 +38,6 @@ export interface TextToSpeech {
   readonly speaking: boolean;
 }
 
-export type TtsEngine = "speech-synthesis" | "kokoro";
+export type TtsEngine = "speech-synthesis" | "orpheus" | "kokoro";
 
 export class TtsError extends Error {}

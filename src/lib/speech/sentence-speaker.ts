@@ -1,7 +1,7 @@
 "use client";
 
 import { loadKokoro } from "./kokoro-tts";
-import { getTts } from "./tts";
+import { getTts, nextEngine } from "./tts";
 import type { TextToSpeech } from "./types";
 
 export type PlayResult = "done" | "interrupted";
@@ -12,6 +12,8 @@ export interface SpeakerHooks {
   onSentenceEnd?: (index: number) => void;
   /** User-facing problem (engine switched, or audio unavailable → captions only). */
   onProblem?: (message: string | null) => void;
+  /** The speaker failed over to another engine (recorded on the interview). */
+  onEngineChange?: (engine: import("./types").TtsEngine) => void;
 }
 
 /**
@@ -60,17 +62,20 @@ export class SentenceSpeaker {
     return token === this.token ? "done" : "interrupted";
   }
 
+  /** Fails over along the engine chain (browser voice → Orpheus → Kokoro) and retries the sentence. */
   private async recover(sentence: string, token: number) {
-    if (this.tts.name === "speech-synthesis") {
-      this.hooks.onProblem?.("The browser voice stopped working. Switching to Proctra's voice…");
+    let next = nextEngine(this.tts.name);
+    while (next) {
+      this.hooks.onProblem?.(this.tts.name === "orpheus" ? null : "The voice stopped working. Switching to a backup voice…");
       try {
-        await loadKokoro();
-        this.tts = getTts("kokoro");
+        if (next === "kokoro") await loadKokoro();
+        this.tts = getTts(next);
         if (token === this.token) await this.tts.speak(sentence);
         this.hooks.onProblem?.(null);
+        this.hooks.onEngineChange?.(next);
         return;
       } catch {
-        /* fall through */
+        next = nextEngine(next);
       }
     }
     this.hooks.onProblem?.("Audio isn't available right now. Please read the question on screen.");

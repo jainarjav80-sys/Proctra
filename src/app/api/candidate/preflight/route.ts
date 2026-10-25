@@ -9,7 +9,7 @@ const body = z.object({
   secondaryCamera: z.object({ paired: z.boolean() }).optional(),
   tts: z
     .object({
-      engine: z.enum(["speech-synthesis", "kokoro"]),
+      engine: z.enum(["speech-synthesis", "orpheus", "kokoro"]),
       browserProbe: z.object({ ok: z.boolean(), voices: z.number(), english: z.number(), voice: z.string().nullable(), reason: z.string().nullable() }),
       heardConfirmed: z.literal(true),
       kokoroLoadMs: z.number().nullable(),
