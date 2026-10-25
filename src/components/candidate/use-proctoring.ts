@@ -49,6 +49,8 @@ export class ChunkRecorder {
   bytes = 0;
   /** Order within the session, assigned when the chunk is produced (uploads may finish out of order). */
   private seq = 0;
+  /** Wall ms since interview start when this recorder session began (the review timeline offset). */
+  private sessionStartMs = 0;
 
   constructor(
     private readonly track: Track,
@@ -58,6 +60,7 @@ export class ChunkRecorder {
 
   start(stream: MediaStream) {
     this.stream = stream;
+    this.sessionStartMs = this.clock();
     const hasAudio = stream.getAudioTracks().length > 0;
     const type = (hasAudio ? ["video/webm;codecs=vp8,opus", "video/webm"] : ["video/webm;codecs=vp8", "video/webm"]).find((t) => MediaRecorder.isTypeSupported(t));
     const b = BITRATES[this.track];
@@ -66,7 +69,7 @@ export class ChunkRecorder {
       if (!e.data.size) return; // note: Chrome can emit a 1-byte first blob (split EBML header); keep it
       this.bytes += e.data.size;
       const seq = this.seq++;
-      const startedMs = Math.max(0, this.clock() - CHUNK_MS);
+      const startedMs = this.sessionStartMs;
       const job = (async () => {
         for (let attempt = 0; attempt < 3; attempt++) {
           try {
