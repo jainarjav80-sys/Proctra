@@ -422,7 +422,10 @@ export function InterviewStage({
       const now = rel();
       if (!st.spoke) st.segStart = now;
       st.spoke = true;
-      st.lastSpeechAt = Date.now();
+      // Interim results track live speech. A final arrives after the speech it covers (Whisper: 1–3 s
+      // later), so it must not restart the end-of-answer silence clock; sendTurn flushes pending
+      // transcripts before submitting.
+      if (!r.isFinal || !st.lastSpeechAt) st.lastSpeechAt = Date.now();
       if (r.isFinal) {
         const seg = { text: r.text.trim(), startMs: Math.max(0, st.segStart), endMs: now, confidence: r.confidence || null };
         if (seg.text) {

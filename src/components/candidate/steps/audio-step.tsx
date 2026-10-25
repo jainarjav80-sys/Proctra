@@ -38,7 +38,7 @@ export function AudioStep({ token, micDeviceId, onDone }: { token: string; micDe
   const [echoRunning, setEchoRunning] = useState(false);
 
   /** Orpheus (Groq) if the voice service answers; Kokoro stays as a hot standby in the background. */
-  async function tryOrpheus() {
+  async function tryOrpheus(): Promise<TtsEngine | null> {
     setTtsToken(token);
     setEngine("orpheus");
     setPhase("loading");
@@ -49,19 +49,22 @@ export function AudioStep({ token, micDeviceId, onDone }: { token: string; micDe
       });
       setPhase("ready");
       void loadKokoro().catch(() => {}); // standby: instant failover if Orpheus hits its daily quota
+      return "orpheus";
     } catch {
-      await switchToKokoro();
+      return (await switchToKokoro()) ? "kokoro" : null;
     }
   }
 
-  async function advance(from: TtsEngine) {
+  /** Moves to the next engine; resolves to the engine now ready, or null if none is left. */
+  async function advance(from: TtsEngine): Promise<TtsEngine | null> {
     const next = nextEngine(from);
-    if (next === "orpheus") await tryOrpheus();
-    else if (next === "kokoro") await switchToKokoro();
-    else setPhase("failed");
+    if (next === "orpheus") return tryOrpheus();
+    if (next === "kokoro") return (await switchToKokoro()) ? "kokoro" : null;
+    setPhase("failed");
+    return null;
   }
 
-  async function switchToKokoro() {
+  async function switchToKokoro(): Promise<boolean> {
     setEngine("kokoro");
     setPhase("loading");
     const t0 = performance.now();
@@ -69,9 +72,11 @@ export function AudioStep({ token, micDeviceId, onDone }: { token: string; micDe
       await loadKokoro(setProgress);
       setKokoroMs(Math.round(performance.now() - t0));
       setPhase("ready");
+      return true;
     } catch (e) {
       setError(`The interviewer voice couldn't be loaded (${(e as Error).message}). Check your connection and reload.`);
       setPhase("failed");
+      return false;
     }
   }
 
@@ -91,18 +96,20 @@ export function AudioStep({ token, micDeviceId, onDone }: { token: string; micDe
     // eslint-disable-next-line react-hooks/exhaustive-deps -- probe once on mount
   }, []);
 
-  async function play() {
-    if (!engine) return;
+  async function play(using: TtsEngine | null = engine) {
+    if (!using) return;
     setError(null);
     setPhase("playing");
     try {
-      await getTts(engine).speak(SAMPLE);
+      await getTts(using).speak(SAMPLE);
       setPlayed(true);
       setPhase("asked");
     } catch (e) {
-      // This engine can't make sound here: fall through to the next one.
-      setError(`That voice didn't work (${(e as Error).message}). Trying another…`);
-      await advance(engine);
+      // This engine can't make sound here (e.g. Orpheus daily quota): switch and play again on the
+      // next one straight away, so the candidate doesn't have to press Play twice.
+      setError(`That voice didn't work (${(e as Error).message}). Switching to another voice…`);
+      const next = await advance(using);
+      if (next) await play(next);
     }
   }
 
@@ -144,7 +151,7 @@ export function AudioStep({ token, micDeviceId, onDone }: { token: string; micDe
 
       {phase !== "checking" && phase !== "loading" && phase !== "failed" ? (
         <div className="flex flex-wrap items-center gap-3">
-          <Button size="lg" onClick={play} disabled={phase === "playing"} data-testid="play-sample">
+          <Button size="lg" onClick={() => void play()} disabled={phase === "playing"} data-testid="play-sample">
             {phase === "playing" ? "Playing…" : played ? "Play again" : "Play sample"}
           </Button>
           {phase === "asked" ? (
