@@ -42,7 +42,8 @@ export function LineField({ className }: { className?: string }) {
       for (let i = -3; i < lines; i++) {
         const wide = i % 9 === 0;
         const amp = wide ? 46 : 18 + 10 * Math.sin(i * 0.37);
-        ctx.strokeStyle = wide ? "rgba(168, 85, 247, 0.7)" : i % 3 === 0 ? "rgba(129, 140, 248, 0.55)" : "rgba(99, 102, 241, 0.4)";
+        // Tuned for a light background (the site's slate-50 surface).
+        ctx.strokeStyle = wide ? "rgba(139, 92, 246, 0.55)" : i % 3 === 0 ? "rgba(79, 70, 229, 0.32)" : "rgba(99, 102, 241, 0.2)";
         ctx.beginPath();
         for (let y = -STEP; y <= h + STEP; y += STEP) {
           const dx =
