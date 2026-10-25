@@ -2,7 +2,7 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   // pdfjs (inside pdf-parse) loads its worker file at runtime, so it must not be bundled.
-  serverExternalPackages: ["pdf-parse"],
+  serverExternalPackages: ["pdf-parse", "@napi-rs/canvas"],
   // Cross-origin isolation on candidate pages enables multi-threaded WASM (SharedArrayBuffer) for
   // in-browser TTS/vision. "credentialless" keeps CDN/model downloads working without CORP headers.
   async headers() {

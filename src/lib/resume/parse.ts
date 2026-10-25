@@ -30,7 +30,9 @@ export async function extractResumeText(buf: Uint8Array): Promise<{ kind: Resume
 
   let text: string;
   if (kind === "pdf") {
-    const { PDFParse } = await import("pdf-parse");
+    const [{ PDFParse }, { getData }] = await Promise.all([import("pdf-parse"), import("pdf-parse/worker")]);
+    // pdf.js worker as a data URL: on Vercel the worker file isn't traced into the function bundle.
+    PDFParse.setWorker(getData());
     const parser = new PDFParse({ data: buf });
     try {
       text = (await parser.getText()).text;
