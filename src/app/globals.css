@@ -169,3 +169,21 @@
     @apply font-sans;
   }
 }
+/* Report printing (Download PDF uses the browser's print-to-PDF). */
+@media print {
+  @page {
+    margin: 14mm;
+  }
+  html,
+  body {
+    background: #fff !important;
+    color: #0f172a !important;
+  }
+  video,
+  [data-testid="synced-player"] {
+    display: none !important;
+  }
+  .shadow-card {
+    box-shadow: none !important;
+  }
+}
