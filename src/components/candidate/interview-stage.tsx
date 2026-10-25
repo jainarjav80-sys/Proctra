@@ -13,6 +13,7 @@ import { classifyIntent, type PauseReason } from "@/lib/interview/fsm";
 import type { ClientQuestion, InterviewAction } from "@/lib/interview/engine";
 import { ApiError, candidateFetch, transcribeAudio, withReconnect, type CandidateSession, type TurnResponse } from "./api";
 import { useProctoring } from "./use-proctoring";
+import { BrandMark } from "@/components/brand/logo";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 
@@ -596,7 +597,7 @@ export function InterviewStage({
   if (phase === "ended") {
     return (
       <div className="mx-auto flex max-w-lg flex-col items-center gap-4 py-24 text-center">
-        <span aria-hidden className="size-16 rounded-full" style={{ background: "var(--ai-gradient)" }} />
+        <BrandMark tone="dark" className="h-10" />
         <h1 className="text-2xl font-semibold">Interview complete</h1>
         <p className="text-muted-foreground">Thank you. Your answers have been saved, and the recruiter will review your interview. You can close this window.</p>
       </div>
