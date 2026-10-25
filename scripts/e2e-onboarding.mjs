@@ -83,8 +83,12 @@ for (const [name, exe] of BROWSERS) {
     step(`speech probe produced a real transcript via "${engine}": "${heard.slice(0, 70)}"`, heard.split(/\s+/).length >= 2);
     step("no misleading 'needs internet' message", !/needs an internet connection/i.test(text));
     await page.screenshot({ path: `${shots}/${name}-device-step.png`, fullPage: true });
+    // Fake camera = test pattern with no face, so the one-face gate (bug #4) must keep Continue locked.
+    await page.waitForFunction(() => !/Checking framing/.test(document.querySelector('[data-testid="face-check"]')?.textContent ?? "Checking framing"), { timeout: 30000, polling: 250 }).catch(() => {});
+    const faceText = await page.$eval('[data-testid="face-check"]', (el) => el.textContent).catch(() => "");
+    step(`face check ran on-device (MediaPipe): "${faceText}"`, /can't see your face/.test(faceText));
     const continueEnabled = await page.evaluate(() => !([...document.querySelectorAll("button")].find((b) => b.textContent.trim() === "Continue")?.disabled ?? true));
-    step("Continue unlocks after the probe", continueEnabled);
+    step("Continue stays locked until exactly one face is in view", !continueEnabled);
   } catch (e) {
     step(`run aborted: ${e.message.split("\n")[0]}`, false);
   } finally {
