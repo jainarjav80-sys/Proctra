@@ -6,16 +6,16 @@ The active scope is the 10-hour prototype in [PROTOTYPE_PLAN.md](docs/PROTOTYPE_
 
 ## Stack
 
-Next.js 16 (App Router, TS strict, Tailwind v4, shadcn/ui) · Supabase (Postgres + Auth + Storage) · Groq (gpt-oss-20b for live turns, gpt-oss-120b for analysis, Qwen fallback) · browser Web Speech STT and speechSynthesis TTS · MediaPipe + TF.js in the browser · LiveKit Cloud for the phone camera. Everything runs on free tiers.
+Next.js 16 (App Router, TS strict, Tailwind v4, shadcn/ui) · Supabase (Postgres + Auth + Storage) · Groq (gpt-oss-20b for live turns, gpt-oss-120b for analysis, Qwen fallback) · browser Web Speech STT with Groq Whisper fallback · interviewer voice: browser speechSynthesis → Groq Orpheus → Kokoro-82M on-device (Web Worker) · MediaPipe + COCO-SSD in the browser · phone camera over WebRTC with Supabase Realtime signalling. Everything runs on free tiers.
 
 ## Setup (about 15 minutes)
 
 1. **Supabase**: create a free project at supabase.com.
-   - In the SQL Editor, paste and run `supabase/migrations/0001_init.sql`.
+   - In the SQL Editor, paste and run every file in `supabase/migrations/` in order (`0001` … `0005`).
    - For a fast demo, turn off email confirmation: Authentication → Sign In / Providers → Email → *Confirm email*.
    - Copy the project URL, anon (publishable) key and service_role (secret) key from Project Settings → API.
 2. **Groq**: create a key at console.groq.com/keys.
-3. **LiveKit** (needed from P4 for the phone camera): create a project at cloud.livekit.io and copy the URL, API key and secret.
+3. **Groq Orpheus voice**: accept the model terms once at console.groq.com (Playground → `canopylabs/orpheus-v1-english`). The free tier allows 100 requests/day; after that the voice switches to Kokoro automatically.
 4. Set up the env file:
    ```bash
    cp .env.example .env.local
@@ -73,9 +73,34 @@ Set `TURN_URL` to a comma-separated list (e.g. `turn:host:80,turn:host:443,turns
 ## Browser support
 
 - **Candidates:** a Chromium-based desktop browser. Chrome and Edge use their built-in speech recognition. Brave, Vivaldi, Opera and Arc are allowed with Proctra's server speech recognition (Groq Whisper), provided the display check (Window Management API) works there. Firefox and Safari are blocked.
-- **Interviewer voice:** the browser's own voice when a real one is installed; otherwise a neural voice (Kokoro, ~90 MB one-time download, runs on the device). On Linux, snap-packaged Brave/Chromium have no voices at all, so they always use Kokoro.
+- **Interviewer voice:** the browser's own voice when a real one is installed, then Groq Orpheus, then Kokoro (~90 MB one-time download, runs on the device in a Web Worker). On Linux, snap-packaged Brave/Chromium have no voices at all, so they use Orpheus or Kokoro.
 - **Phone camera:** any modern phone browser over HTTPS (iOS Safari 16.4+, Android Chrome).
 - **Recruiter pages:** any modern browser.
+
+## Demo script (about 10 minutes)
+
+Prepare once (dev server on :3123, or pass the Vercel URL as the last argument):
+
+```bash
+node --env-file=.env.local scripts/create-demo-recruiter.mjs
+```
+
+```bash
+node --env-file=.env.local scripts/seed-completed-demo.mjs
+```
+
+The second command runs a whole candidate interview in headless Chromium (voice answers, a follow-up, a barge-in, camera + screen + phone recordings), waits for the background evaluation and prints the review URL. It adds one observation labelled `[demo seed]` so the Proctoring tab has a snapshot to show.
+
+Then walk through it live:
+
+1. **Recruiter:** sign in as the demo recruiter → Jobs → create a job from a JD → "Analyse" (skills, seniority) → add a candidate with a resume PDF → generate and approve the question blueprint → copy the invite link.
+2. **Candidate** (Chrome, second profile): open the invite → consent → camera/mic + face check → sound check (browser voice, or Orpheus/Kokoro) → pair the phone by QR (same Wi-Fi) → share the entire screen → answer two questions by voice. Say "can you repeat" once and talk over the interviewer once.
+3. **Review** the seeded interview at `/dashboard/interviews/:id`: overall and per-question scores with quotes highlighted in the transcript (click one to jump the video) → Recording tab (three synced streams, markers, paused spans) → Proctoring tab ("Observations for human review, not used in scoring", benign explanations) → override a score with a reason → set Advance/Hold/Reject → Download PDF / CSV.
+4. **Candidate dashboard:** shows only "Completed — the hiring team will be in touch".
+
+Things to say up front: the phone camera needs both devices on the same network (TURN pending), and Orpheus has 100 requests/day (about 25 per interview), after which Kokoro takes over.
+
+The manual checks that automation can't cover are in [docs/MANUAL_CHECKLIST.md](docs/MANUAL_CHECKLIST.md).
 
 ## Checks
 
@@ -93,4 +118,12 @@ node --env-file=.env.local scripts/check-rls.mjs
 node --env-file=.env.local scripts/e2e-audio-warnings.mjs
 ```
 
-Other scripts in `scripts/`: `check-interview-flow`, `check-speech-signals`, `check-whisper`, `check-proctoring`, `e2e-onboarding`, `e2e-phone-pairing`.
+```bash
+node --env-file=.env.local scripts/e2e-full-interview.mjs --keep
+```
+
+```bash
+node --env-file=.env.local scripts/e2e-review.mjs
+```
+
+`e2e-full-interview` runs a complete voice interview (add `--force-kokoro` to block Orpheus and measure the on-device voice; it prints the answer-to-audio gap per turn). `e2e-review` opens the kept interview's review page and checks stitched, gapless, synced playback and seeking. Other scripts in `scripts/`: `check-interview-flow`, `check-speech-signals`, `check-whisper`, `check-proctoring`, `e2e-onboarding`, `e2e-phone-pairing`, `bench-kokoro`.
