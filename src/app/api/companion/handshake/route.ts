@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { TokenError, verifyToken } from "@/lib/auth/tokens";
+import { TokenError, signToken, verifyToken } from "@/lib/auth/tokens";
 import { iceServers, pairingChannel } from "@/lib/companion/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -33,5 +33,7 @@ export async function POST(req: Request) {
   if (!consumed?.length) {
     return Response.json({ error: "This QR code was already used or has expired. Show a new one on your computer." }, { status: 410 });
   }
-  return Response.json({ channel: pairingChannel(claims.interviewId, claims.nonce), iceServers: iceServers() });
+  // The companion token only lets this phone upload its own camera chunks for this interview.
+  const companionToken = await signToken("companion", claims.interviewId, { nonce: claims.nonce });
+  return Response.json({ channel: pairingChannel(claims.interviewId, claims.nonce), iceServers: iceServers(), companionToken });
 }

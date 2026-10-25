@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import { PhoneLink, type LinkStatus } from "@/lib/companion/rtc";
+import { createClient } from "@/lib/supabase/client";
+import { ChunkRecorder, RestartRecording, type ChunkUploader } from "@/components/candidate/use-proctoring";
 import { Button } from "@/components/ui/button";
 
 type Phase = "intro" | "pairing" | "live" | "error";
@@ -18,6 +20,8 @@ export function PhoneCompanion({ token }: { token: string }) {
   const [status, setStatus] = useState<LinkStatus>("waiting");
   const [error, setError] = useState<string | null>(null);
   const [awake, setAwake] = useState<boolean | null>(null);
+  const recorder = useRef<ChunkRecorder | null>(null);
+  const [recordedMB, setRecordedMB] = useState(0);
 
   useEffect(() => {
     const onVis = () => {
@@ -32,6 +36,7 @@ export function PhoneCompanion({ token }: { token: string }) {
   useEffect(
     () => () => {
       link.current?.close();
+      void recorder.current?.stop();
       stream.current?.getTracks().forEach((t) => t.stop());
     },
     [],
@@ -60,6 +65,26 @@ export function PhoneCompanion({ token }: { token: string }) {
       link.current = l;
       await l.start();
       setPhase("live");
+
+      // Record the workspace view in 10 s chunks (only accepted once the interview is running).
+      const supabase = createClient();
+      const upload: ChunkUploader = async (_track, session, _startedMs, blob) => {
+        const res = await fetch("/api/companion/recording", {
+          method: "POST",
+          headers: { "content-type": "application/json", authorization: `Bearer ${body.companionToken}` },
+          body: JSON.stringify({ session }),
+        });
+        const json = await res.json();
+        if (res.status === 409) throw new RestartRecording("interview not started");
+        if (!res.ok) throw new Error(json.error ?? "upload refused");
+        const { error } = await supabase.storage.from("recordings").uploadToSignedUrl(json.path, json.token, blob, { contentType: "video/webm", upsert: true });
+        if (error) throw error;
+      };
+      const rec = new ChunkRecorder("SECONDARY", upload, () => 0);
+      recorder.current = rec;
+      rec.start(s);
+      const meter = setInterval(() => setRecordedMB(Math.round((rec.bytes / 1e6) * 10) / 10), 2000);
+      window.addEventListener("pagehide", () => clearInterval(meter), { once: true });
     } catch (e) {
       const err = e as DOMException;
       setError(err.name === "NotAllowedError" ? "Camera permission was blocked. Allow camera access for this site in your browser settings, then reload." : err.message);
@@ -89,6 +114,7 @@ export function PhoneCompanion({ token }: { token: string }) {
           <ul className="list-disc space-y-1 pl-5 text-sm text-muted-foreground">
             <li>Place the phone 1–1.5 m away, beside or behind you at about 45°.</li>
             <li>Make sure the view shows you, your hands, your desk and your computer screen.</li>
+            <li data-testid="phone-recorded">Recording this view for the recruiter ({recordedMB} MB so far).</li>
             <li>Keep this page open and the phone plugged in{awake === false ? ". Your browser can't keep the screen on, so turn off auto-lock for the interview" : ""}.</li>
           </ul>
         </>
