@@ -4,6 +4,8 @@ import { useState } from "react";
 import { candidateFetch, type CandidateSession } from "../api";
 import type { BrowserSupport } from "./browser-gate";
 import type { DeviceResult } from "./device-step";
+import type { AudioResult } from "./audio-step";
+import { screenShareInfo, shareEntireScreen } from "@/lib/proctoring/edge/screen-share";
 import { Button } from "@/components/ui/button";
 
 type ScreenDetails = { screens: unknown[] };
@@ -28,6 +30,7 @@ export function DisplayStep({
   session,
   support,
   devices,
+  audio,
   phonePaired,
   onDone,
 }: {
@@ -35,11 +38,25 @@ export function DisplayStep({
   session: CandidateSession;
   support: BrowserSupport;
   devices: DeviceResult;
+  audio: AudioResult;
   phonePaired: boolean;
-  onDone: () => void;
+  onDone: (screen: MediaStream | null) => void;
 }) {
   const needFullscreen = session.proctoring.enforce_fullscreen !== false;
   const blockMulti = session.proctoring.block_multi_monitor !== false;
+  const needScreen = session.proctoring.require_screen_share !== false;
+  const [screen, setScreen] = useState<MediaStream | null>(null);
+
+  async function share() {
+    setError(null);
+    try {
+      screen?.getTracks().forEach((t) => t.stop());
+      setScreen(await shareEntireScreen());
+    } catch (e) {
+      const err = e as DOMException;
+      setError(err.name === "NotAllowedError" ? "Screen sharing was cancelled. It's required for this interview." : err.message);
+    }
+  }
   const [topology, setTopology] = useState<{ isExtended: boolean | null; screenCount: number | null } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
@@ -60,16 +77,20 @@ export function DisplayStep({
         setTopology(t);
         throw new Error("More than one display is connected. Disconnect or disable extra monitors, then check again.");
       }
+      if (needScreen && !screen) throw new Error("Share your entire screen first.");
       if (needFullscreen && !document.fullscreenElement) await document.documentElement.requestFullscreen();
       await candidateFetch(token, "preflight", {
         body: {
           browser: { userAgent: support.userAgent.slice(0, 500), family: support.info.family, chromium: support.info.chromium, speechRecognition: support.speechApi },
           ...devices,
+          audio: { ...devices.audio, echoTest: audio.echoTest, detection: devices.audio.detection === "none" && audio.echoTest.ran && audio.echoTest.result === "pass" ? "echo-test" : devices.audio.detection },
+          tts: audio.tts,
+          screenShare: screen ? screenShareInfo(screen) : null,
           secondaryCamera: { paired: phonePaired },
           display: { fullscreen: Boolean(document.fullscreenElement), isExtended: t.isExtended, screenCount: t.screenCount },
         },
       });
-      onDone();
+      onDone(screen);
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -104,13 +125,22 @@ export function DisplayStep({
           ) : null}
         </div>
       ) : null}
+      {needScreen ? (
+        <div className="flex flex-col gap-2 rounded-lg border bg-card p-4 text-sm">
+          <p>Share your <strong>entire screen</strong>. It&apos;s recorded for the recruiter, and stopping it pauses the interview.</p>
+          <Button size="sm" variant={screen ? "outline" : "default"} className="self-start" onClick={share} data-testid="share-screen">
+            {screen ? "Share again" : "Share entire screen"}
+          </Button>
+          {screen ? <p className="text-success" data-testid="screen-ok">✓ Entire screen shared ({screenShareInfo(screen).width}×{screenShareInfo(screen).height})</p> : null}
+        </div>
+      ) : null}
       {error ? (
         <p role="alert" className="text-sm text-danger">
           {error}
         </p>
       ) : null}
       <div>
-        <Button size="lg" onClick={begin} disabled={pending || (blockMulti && (!topology || multi))}>
+        <Button size="lg" onClick={begin} disabled={pending || (blockMulti && (!topology || multi)) || (needScreen && !screen)}>
           {pending ? "Starting…" : needFullscreen ? "Enter fullscreen & start interview" : "Start interview"}
         </Button>
       </div>

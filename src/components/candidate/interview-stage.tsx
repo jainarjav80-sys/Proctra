@@ -1,21 +1,22 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { BrowserTTS } from "@/lib/speech/browser-tts";
+import { getTts } from "@/lib/speech/tts";
+import { SentenceSpeaker } from "@/lib/speech/sentence-speaker";
 import { EnergyVAD } from "@/lib/speech/energy-vad";
 import { splitSentences } from "@/lib/speech/sentences";
 import { WebSpeechSTT } from "@/lib/speech/web-speech-stt";
 import { WhisperSTT } from "@/lib/speech/whisper-stt";
 import { mapSttError } from "@/lib/speech/stt-errors";
-import type { SpeechToText, SttEngine } from "@/lib/speech/types";
-import { classifyIntent } from "@/lib/interview/fsm";
+import type { SpeechToText, SttEngine, TtsEngine } from "@/lib/speech/types";
+import { classifyIntent, type PauseReason } from "@/lib/interview/fsm";
 import type { ClientQuestion, InterviewAction } from "@/lib/interview/engine";
 import { ApiError, candidateFetch, transcribeAudio, withReconnect, type CandidateSession, type TurnResponse } from "./api";
 import { useProctoring } from "./use-proctoring";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 
-type Phase = "starting" | "speaking" | "listening" | "submitting" | "reconnecting" | "ended" | "error";
+type Phase = "starting" | "speaking" | "listening" | "submitting" | "reconnecting" | "paused" | "ended" | "error";
 type TurnKind = "ANSWER" | "NO_RESPONSE" | "SKIP" | "REPEAT";
 /** answer = normal answering; barge = capturing what they said over the interviewer;
  *  confirm = waiting for "yes/no" to "Shall I continue the question?" */
@@ -44,17 +45,28 @@ export function InterviewStage({
   session,
   stream,
   engine: initialEngine,
+  ttsEngine,
   secondary,
+  screen,
+  pause,
+  onScreenShareEnded,
 }: {
   token: string;
   session: CandidateSession;
   stream: MediaStream;
   engine: SttEngine;
+  /** Interviewer voice confirmed audible during onboarding. */
+  ttsEngine: TtsEngine;
   /** Paired phone camera, if connected. */
   secondary?: { stream: MediaStream | null; connected: boolean; onReconnectHelp?: () => void } | null;
+  /** Full-monitor screen share (recorded; stopping it pauses the interview). */
+  screen: MediaStream | null;
+  /** Set by the parent when a policy requirement is lost; cleared once it's restored. */
+  pause: PauseReason | null;
+  onScreenShareEnded: () => void;
 }) {
   const selfView = useRef<HTMLVideoElement>(null);
-  const tts = useRef<BrowserTTS | null>(null);
+  const speaker = useRef<SentenceSpeaker | null>(null);
   const stt = useRef<SpeechToText | null>(null);
   const sttEngine = useRef<SttEngine>(initialEngine);
   const vad = useRef<EnergyVAD | null>(null);
@@ -90,7 +102,6 @@ export function InterviewStage({
     sentences: [] as string[],
     questionFrom: 0, // index of the first sentence of the question itself
     sentenceIdx: 0,
-    speakToken: 0,
     speakingQuestion: false,
     // Barge-in
     mode: "answer" as Mode,
@@ -99,15 +110,17 @@ export function InterviewStage({
     bargeIns: [] as BargeIn[],
     totalBargeIns: 0,
     pendingAnswer: [] as Segment[],
+    pausedMs: 0,
   });
 
   useEffect(() => {
     if (selfView.current) selfView.current.srcObject = stream;
   }, [stream]);
 
-  const { notice: proctorNotice, proctor } = useProctoring({
+  const { notice: proctorNotice, proctor, warn } = useProctoring({
     token,
     stream,
+    screen,
     video: selfView,
     config: session.proctoring,
     startedAt: startedAtMs,
@@ -121,7 +134,7 @@ export function InterviewStage({
     proctor.current?.setSecondary(secondary?.stream && secondary.connected ? secondaryView.current : null);
     if (!secondary) return;
     if (secondaryWasConnected.current && !secondary.connected && startedAtMs) {
-      proctor.current?.report({
+      const id = proctor.current?.report({
         type: "SECONDARY_CAM_DISCONNECTED",
         source: "SECONDARY_CAM",
         severity: "MEDIUM",
@@ -131,11 +144,13 @@ export function InterviewStage({
         description: "The phone camera stopped streaming (heartbeat lost).",
         telemetry: {},
       });
+      if (id) warn("SECONDARY_CAM_DISCONNECTED", id);
     }
     secondaryWasConnected.current = secondary.connected;
-  }, [secondary, proctor, startedAtMs]);
+  }, [secondary, proctor, startedAtMs, warn]);
 
-  const rel = () => Math.max(0, Date.now() - s.current.startedAt);
+  /** Interview-clock ms (excludes completed pauses), matching the server's timeline. */
+  const rel = () => Math.max(0, Date.now() - s.current.startedAt - s.current.pausedMs);
 
   // ---- speech helpers -------------------------------------------------------------------------
   const stopListening = useCallback(() => {
@@ -150,7 +165,6 @@ export function InterviewStage({
   const speakSentences = useCallback(
     async (sentences: string[], from: number, opts: { question: boolean; questionFrom?: number; caption?: string }) => {
       const st = s.current;
-      const token = ++st.speakToken;
       stopListening(); // the recogniser must not transcribe the interviewer
       st.sentences = sentences;
       st.questionFrom = opts.questionFrom ?? 0;
@@ -159,13 +173,8 @@ export function InterviewStage({
       setHint(null);
       setCaption(opts.caption ?? sentences.join(" "));
       if (vad.current) vad.current.armed = true;
-      for (let i = from; i < sentences.length; i++) {
-        if (token !== st.speakToken) return "interrupted" as const;
-        st.sentenceIdx = i;
-        vad.current?.calibrate();
-        await tts.current!.speak(sentences[i]);
-      }
-      if (token !== st.speakToken) return "interrupted" as const;
+      const result = await speaker.current!.play(sentences, from);
+      if (result === "interrupted") return result;
       if (vad.current) {
         vad.current.armed = false;
         vad.current.resetFloor();
@@ -217,13 +226,11 @@ export function InterviewStage({
     const st = s.current;
     if (!st.speakingQuestion || st.busy) {
       // Talking over a nudge/prompt just means they're ready: stop and listen.
-      st.speakToken++;
-      tts.current?.cancel();
+      speaker.current?.interrupt();
       startListening(false);
       return;
     }
-    st.speakToken++;
-    tts.current?.cancel();
+    speaker.current?.interrupt();
     if (vad.current) vad.current.armed = false;
     st.interruptedIdx = st.sentenceIdx;
     st.bargeIns.push({ sentenceIndex: st.sentenceIdx, sentenceCount: st.sentences.length, atMs: rel(), utterance: "" });
@@ -251,6 +258,7 @@ export function InterviewStage({
     async (res: TurnResponse) => {
       const st = s.current;
       st.version = res.version;
+      st.pausedMs = res.pausedMs ?? 0;
       st.startedAt = new Date(res.startedAt).getTime();
       setStartedAtMs(st.startedAt);
       st.durationMinutes = res.durationMinutes;
@@ -280,8 +288,7 @@ export function InterviewStage({
       const st = s.current;
       if (st.busy) return;
       st.busy = true;
-      st.speakToken++;
-      tts.current?.cancel();
+      speaker.current?.interrupt();
       if (vad.current) vad.current.armed = false;
       stopListening();
       setPhase("submitting");
@@ -389,7 +396,13 @@ export function InterviewStage({
 
   // ---- setup: speech engines, VAD + start/resume -----------------------------------------------
   useEffect(() => {
-    tts.current = new BrowserTTS();
+    speaker.current = new SentenceSpeaker(getTts(ttsEngine), {
+      onSentenceStart: (i) => {
+        s.current.sentenceIdx = i;
+        vad.current?.calibrate(); // re-learn the echo level as each sentence starts
+      },
+      onProblem: setError,
+    });
     const offs: (() => void)[] = [];
     const attach = (engine: SttEngine) => {
       offs.splice(0).forEach((off) => off());
@@ -444,7 +457,7 @@ export function InterviewStage({
       .start()
       .then(() => {
         offVad = detector.on((e) => {
-          if (e === "start" && s.current.speakToken && tts.current?.speaking) onBargeInRef.current();
+          if (e === "start" && speaker.current?.speaking) onBargeInRef.current();
         });
       })
       .catch(() => {
@@ -470,17 +483,61 @@ export function InterviewStage({
       detector.stop();
       stt.current?.stop();
       if (stt.current instanceof WhisperSTT) stt.current.dispose();
-      tts.current?.cancel();
+      speaker.current?.interrupt();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- run once per mount
   }, []);
+
+  // ---- screen share: stopping it is logged and pauses the interview (parent restores it) ----------
+  useEffect(() => {
+    const track = screen?.getVideoTracks()[0];
+    if (!track) return;
+    const onEnded = () => {
+      proctor.current?.report({
+        type: "SCREEN_SHARE_STOPPED",
+        source: "SCREEN",
+        severity: "MEDIUM",
+        startMs: rel(),
+        endMs: null,
+        confidence: 1,
+        description: "Screen sharing was stopped during the interview.",
+        telemetry: { label: track.label },
+      });
+      onScreenShareEnded();
+    };
+    track.addEventListener("ended", onEnded);
+    return () => track.removeEventListener("ended", onEnded);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- rel/proctor are refs
+  }, [screen, onScreenShareEnded]);
+
+  // ---- policy pause / resume ------------------------------------------------------------------
+  const pausedFor = useRef<PauseReason | null>(null);
+  useEffect(() => {
+    const st = s.current;
+    if (pause && !pausedFor.current && st.version) {
+      pausedFor.current = pause;
+      speaker.current?.interrupt();
+      stopListening();
+      setPhase("paused");
+      void candidateFetch(token, "interview/pause", { body: { reason: pause } }).catch(() => {});
+    } else if (!pause && pausedFor.current) {
+      pausedFor.current = null;
+      setPhase("submitting");
+      void withReconnect(() => candidateFetch<TurnResponse>(token, "interview/resume", { body: {} }), () => setPhase("reconnecting"))
+        .then((res) => handle(res))
+        .catch((e) => {
+          setError((e as Error).message);
+          setPhase("error");
+        });
+    }
+  }, [pause, handle, stopListening, token]);
 
   // ---- timers: barge-in resolution, silence ladder, end-of-answer, answer limit -------------------
   useEffect(() => {
     const id = setInterval(() => {
       const t = Date.now();
       const st = s.current;
-      setClock({ now: t, startedAt: st.startedAt, durationMinutes: st.durationMinutes, listenStartedAt: st.listenStartedAt, lastSpeechAt: st.lastSpeechAt, spoke: st.spoke, mode: st.mode, bargeIns: st.totalBargeIns });
+      setClock({ now: t, startedAt: st.startedAt + st.pausedMs, durationMinutes: st.durationMinutes, listenStartedAt: st.listenStartedAt, lastSpeechAt: st.lastSpeechAt, spoke: st.spoke, mode: st.mode, bargeIns: st.totalBargeIns });
       if (phase !== "listening" || st.busy || !question) return;
 
       if (st.mode === "barge") {
@@ -578,6 +635,7 @@ export function InterviewStage({
           {phase === "submitting" && "Thinking…"}
           {phase === "reconnecting" && "Reconnecting… your progress is saved."}
           {phase === "starting" && "Connecting…"}
+          {phase === "paused" && "Interview paused."}
         </p>
         <div className="max-w-3xl rounded-xl border bg-card/85 p-6 backdrop-blur">
           {question ? (
@@ -606,7 +664,16 @@ export function InterviewStage({
 
         <div className="flex flex-wrap justify-center gap-2">
           {phase === "speaking" ? (
-            <Button variant="outline" onClick={() => tts.current?.cancel()}>
+            <Button
+              variant="outline"
+              onClick={() => {
+                speaker.current?.interrupt();
+                if (question) {
+                  setCaption(question.text);
+                  startListening(true);
+                }
+              }}
+            >
               Skip reading
             </Button>
           ) : null}

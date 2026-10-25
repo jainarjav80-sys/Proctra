@@ -1,5 +1,5 @@
 import { CANDIDATE_TOKEN_HEADER, candidateError, requireCandidate } from "@/lib/candidate/session";
-import { TurnConflictError, processTurn, startOrResume, turnSchema } from "@/lib/interview/engine";
+import { InterviewPausedError, TurnConflictError, processTurn, startOrResume, turnSchema } from "@/lib/interview/engine";
 
 export const maxDuration = 30;
 
@@ -12,6 +12,7 @@ export async function POST(req: Request) {
     try {
       return Response.json(await processTurn(admin, interview, parsed.data));
     } catch (e) {
+      if (e instanceof InterviewPausedError) return Response.json({ error: "The interview is paused", paused: e.reason }, { status: 423 });
       if (!(e instanceof TurnConflictError)) throw e;
       // Another tab (or a lost response) advanced the state: return the authoritative current step.
       const { interview: fresh } = await requireCandidate(req.headers.get(CANDIDATE_TOKEN_HEADER), req);
