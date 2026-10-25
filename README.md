@@ -40,8 +40,55 @@ npm test
 
 ## Deploy (Vercel Hobby)
 
-Import the repo in Vercel, add every variable from `.env.example` with `NEXT_PUBLIC_APP_URL` set to the Vercel URL, and deploy. The camera, mic and screen APIs need HTTPS, which Vercel provides. On localhost they also work in Chrome.
+1. **Import** the GitHub repo in Vercel (framework: Next.js; build command `npm run build`, which also copies the MediaPipe/Kokoro browser runtimes into `public/vendor`).
+2. **Environment variables** (Project → Settings → Environment Variables, for Production and Preview):
+
+   | Variable | Value |
+   | :--- | :--- |
+   | `NEXT_PUBLIC_APP_URL` | your Vercel URL, e.g. `https://proctra.vercel.app` (used in invite links and phone QR codes) |
+   | `TOKEN_SECRET` | same 32+ char secret as local (or a new one: existing invite links will stop working) |
+   | `NEXT_PUBLIC_SUPABASE_URL` | `https://<project-ref>.supabase.co` |
+   | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase **publishable** key |
+   | `SUPABASE_SERVICE_ROLE_KEY` | Supabase **secret** key (server-only) |
+   | `GROQ_API_KEY` | Groq key |
+   | `GROQ_FAST_MODEL` / `GROQ_SMART_MODEL` / `GROQ_FALLBACK_MODEL` | optional; defaults `openai/gpt-oss-20b` / `openai/gpt-oss-120b` / `qwen/qwen3.8-27b` |
+   | `TURN_URL`, `TURN_USERNAME`, `TURN_CREDENTIAL` | optional TURN relay for phones on mobile data (below) |
+
+3. **Supabase Auth URLs** (Authentication → URL Configuration): set **Site URL** to the Vercel URL and add `https://<your-app>.vercel.app/**` (and `http://localhost:3000/**` for local dev) to **Redirect URLs**. Only needed for email links (confirmation/reset); password sign-in works without it.
+4. **Redeploy** after changing env vars (Vercel only applies them to new deployments).
+
+HTTPS matters: phones only allow camera access on secure origins, so test the phone camera on the Vercel URL, not `localhost`.
+
+### Phone camera on mobile data (TURN)
+
+The phone ↔ computer video is plain WebRTC with STUN, which works on most home/office Wi-Fi. Mobile carriers and strict corporate networks often need a **TURN relay**. Free options:
+
+- **Metered "Open Relay" / free tier** (metered.ca): sign up, copy the TURN URLs, username and credential. Free quota is small but plenty for demos.
+- **Cloudflare Realtime TURN**: free tier with generous monthly egress; credentials are generated per session via their API (would need a small server route).
+
+Set `TURN_URL` to a comma-separated list (e.g. `turn:host:80,turn:host:443,turns:host:443?transport=tcp`) plus `TURN_USERNAME` and `TURN_CREDENTIAL`. LiveKit Cloud would include TURN, but only for LiveKit rooms; this build uses WebRTC + Supabase Realtime signalling instead.
 
 ## Browser support
 
-Candidates need current **Chrome or Edge**, because multi-monitor detection and Web Speech recognition are Chromium-only. Recruiter pages work in any modern browser.
+- **Candidates:** a Chromium-based desktop browser. Chrome and Edge use their built-in speech recognition. Brave, Vivaldi, Opera and Arc are allowed with Proctra's server speech recognition (Groq Whisper), provided the display check (Window Management API) works there. Firefox and Safari are blocked.
+- **Interviewer voice:** the browser's own voice when a real one is installed; otherwise a neural voice (Kokoro, ~90 MB one-time download, runs on the device). On Linux, snap-packaged Brave/Chromium have no voices at all, so they always use Kokoro.
+- **Phone camera:** any modern phone browser over HTTPS (iOS Safari 16.4+, Android Chrome).
+- **Recruiter pages:** any modern browser.
+
+## Checks
+
+```bash
+npm test
+```
+
+Live checks against your Supabase project (dev server on :3123):
+
+```bash
+node --env-file=.env.local scripts/check-rls.mjs
+```
+
+```bash
+node --env-file=.env.local scripts/e2e-audio-warnings.mjs
+```
+
+Other scripts in `scripts/`: `check-interview-flow`, `check-speech-signals`, `check-whisper`, `check-proctoring`, `e2e-onboarding`, `e2e-phone-pairing`.
