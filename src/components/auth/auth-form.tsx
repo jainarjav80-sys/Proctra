@@ -20,7 +20,7 @@ function Field({ id, label, ...props }: { id: string; label: string } & React.Co
   return (
     <div className="flex flex-col gap-2">
       <Label htmlFor={id}>{label}</Label>
-      <Input id={id} name={id} {...props} />
+      <Input id={id} name={id} {...props} className={`bg-card ${props.className ?? ""}`} />
     </div>
   );
 }
@@ -32,6 +32,7 @@ export function AuthForm({
   defaultType = "organization",
   prefillEmail,
   inviteNotice,
+  bare = false,
 }: {
   mode: "login" | "signup";
   action: (state: AuthState, form: FormData) => Promise<AuthState>;
@@ -39,6 +40,8 @@ export function AuthForm({
   defaultType?: AccountType;
   prefillEmail?: string;
   inviteNotice?: string;
+  /** Render without the card (inside the split AuthShell). */
+  bare?: boolean;
 }) {
   const [state, formAction, pending] = useActionState(action, {});
   const [type, setType] = useState<AccountType>(defaultType);
@@ -46,14 +49,25 @@ export function AuthForm({
   const isLogin = mode === "login";
   const query = next ? `?next=${encodeURIComponent(next)}` : "";
 
+  const Shell = bare ? "div" : Card;
+  const Header = bare ? "div" : CardHeader;
+  const Content = bare ? "div" : CardContent;
   return (
-    <Card className="w-full max-w-md shadow-card">
-      <CardHeader>
-        <BrandLogo className="-ml-1 mb-2 h-12" />
-        <CardTitle className="text-2xl">{isLogin ? "Sign in to Proctra" : "Create your Proctra account"}</CardTitle>
-        <CardDescription>{inviteNotice ?? "AI interviews with human-reviewed proctoring."}</CardDescription>
-      </CardHeader>
-      <CardContent>
+    <Shell className={bare ? "flex w-full flex-col gap-6" : "w-full max-w-md shadow-card"}>
+      <Header className={bare ? "flex flex-col gap-1" : undefined}>
+        <BrandLogo className="-ml-1 mb-2 h-12 self-start" />
+        {bare ? (
+          <h1 className="text-3xl font-semibold tracking-tight">{isLogin ? "Sign in" : "Create your account"}</h1>
+        ) : (
+          <CardTitle className="text-2xl">{isLogin ? "Sign in to Proctra" : "Create your Proctra account"}</CardTitle>
+        )}
+        {bare ? (
+          <p className="text-sm text-muted-foreground">{inviteNotice ?? "AI interviews, human decisions. Every flag is reviewed by a person."}</p>
+        ) : (
+          <CardDescription>{inviteNotice ?? "AI interviews with human-reviewed proctoring."}</CardDescription>
+        )}
+      </Header>
+      <Content>
         <form action={formAction} className="flex flex-col gap-4">
           {next ? <input type="hidden" name="next" value={next} /> : null}
           <input type="hidden" name="accountType" value={type} />
@@ -65,7 +79,7 @@ export function AuthForm({
                 aria-pressed={type === t.id}
                 data-testid={`account-${t.id}`}
                 onClick={() => setType(t.id)}
-                className={`focus-ring rounded-lg border p-3 text-left text-sm transition-colors ${type === t.id ? "border-primary bg-accent" : "hover:bg-muted"}`}
+                className={`focus-ring rounded-lg border p-3 text-left text-sm transition-colors ${type === t.id ? "border-primary bg-accent" : "bg-card hover:bg-muted"}`}
               >
                 <span className="block font-medium">{t.title}</span>
                 <span className="block text-xs text-muted-foreground">{t.detail}</span>
@@ -113,12 +127,12 @@ export function AuthForm({
           </Button>
           <p className="text-center text-sm text-muted-foreground">
             {isLogin ? "New to Proctra? " : "Already have an account? "}
-            <Link className="font-medium text-primary underline-offset-4 hover:underline" href={`${isLogin ? "/signup" : "/login"}${query}`}>
+            <Link className="font-medium text-primary underline-offset-4 hover:underline" href={`${isLogin ? "/signup" : "/"}${query}`}>
               {isLogin ? "Create an account" : "Sign in"}
             </Link>
           </p>
         </form>
-      </CardContent>
-    </Card>
+      </Content>
+    </Shell>
   );
 }

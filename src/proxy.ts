@@ -6,6 +6,6 @@ export function proxy(request: NextRequest) {
 }
 
 export const config = {
-  // Role-gated pages and the auth pages. Candidate interview pages and APIs verify their own access.
-  matcher: ["/dashboard/:path*", "/jobs/:path*", "/interviews/:path*", "/candidate/:path*", "/login", "/signup"],
+  // Role-gated pages and the auth pages ("/" is the sign-in page). Candidate interview pages and APIs verify their own access.
+  matcher: ["/", "/dashboard/:path*", "/jobs/:path*", "/interviews/:path*", "/candidate/:path*", "/login", "/signup"],
 };
