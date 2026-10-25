@@ -13,6 +13,7 @@ export interface CandidateSession {
   proctoring: Partial<Record<"enforce_fullscreen" | "block_multi_monitor" | "gaze_tracking" | "object_detection" | "record_video", boolean>>;
   status: string;
   consented: boolean;
+  consentScopes: string[];
   preflightDone: boolean;
   policyVersion: string;
   consentItems: (ConsentItem & { required: boolean })[];

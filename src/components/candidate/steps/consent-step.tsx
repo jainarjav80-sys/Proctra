@@ -5,7 +5,7 @@ import { candidateFetch, type CandidateSession } from "../api";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 
-export function ConsentStep({ token, session, onDone }: { token: string; session: CandidateSession; onDone: () => void }) {
+export function ConsentStep({ token, session, onDone }: { token: string; session: CandidateSession; onDone: (scopes: string[]) => void }) {
   const [checked, setChecked] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
@@ -16,8 +16,8 @@ export function ConsentStep({ token, session, onDone }: { token: string; session
     setPending(true);
     setError(null);
     try {
-      await candidateFetch(token, "consent", { body: { scopes: [...checked], policyVersion: session.policyVersion } });
-      onDone();
+      const res = await candidateFetch<{ scopes: string[] }>(token, "consent", { body: { scopes: [...checked], policyVersion: session.policyVersion } });
+      onDone(res.scopes);
     } catch (e) {
       setError((e as Error).message);
     } finally {
