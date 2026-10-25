@@ -175,9 +175,19 @@ export async function resumeInterview(admin: Admin, interview: CandidateIntervie
 }
 
 /** Starts the interview, or resumes it at the current question after a refresh/reconnect. */
-export async function startOrResume(admin: Admin, interview: CandidateInterview): Promise<TurnResponse> {
+function greeting(interview: CandidateInterview, total: number) {
+  const job = (interview.jobs as { title: string } | null)?.title ?? "this role";
+  return `Hi ${firstName(interview.candidate_name)}, I'm Proctra, your interviewer for the ${job} position. I'll ask ${total} questions. Take your time, answer out loud, and press "I've finished" or simply pause when you're done. You can say "repeat" or "skip" at any point. Let's begin with question one.`;
+}
+
+export async function startOrResume(admin: Admin, interview: CandidateInterview, opts: { raced?: boolean } = {}): Promise<TurnResponse> {
   const existing = interview.fsm_state as FsmState | null;
   if (existing && interview.started_at) {
+    // Two start calls raced (double effect, network retry): the loser gets the same opening.
+    if (opts.raced && existing.version === 1) {
+      const q = await loadQuestion(admin, existing.questionId);
+      return response(interview, existing, interview.started_at, { type: "ASK", say: greeting(interview, existing.totalPrimary), question: clientQuestion(q, existing.totalPrimary, interview) });
+    }
     if (existing.phase === "COMPLETED") {
       return response(interview, existing, interview.started_at, { type: "END", say: "This interview is already complete. Thank you!" });
     }
@@ -211,10 +221,15 @@ export async function startOrResume(admin: Admin, interview: CandidateInterview)
     repeats: 0,
     clarifies: 0,
   };
-  await commit(admin, interview, null, state, { status: "IN_PROGRESS", started_at: startedAt });
+  try {
+    await commit(admin, interview, null, state, { status: "IN_PROGRESS", started_at: startedAt });
+  } catch (e) {
+    if (!(e instanceof TurnConflictError) || opts.raced) throw e;
+    const { data: fresh } = await admin.from("interviews").select("*, jobs(title)").eq("id", interview.id).single();
+    return startOrResume(admin, fresh as CandidateInterview, { raced: true });
+  }
   await admin.from("questions").update({ status: "IN_PROGRESS", asked_at_ms: 0 }).eq("id", first.id);
-  const job = (interview.jobs as { title: string } | null)?.title ?? "this role";
-  const say = `Hi ${firstName(interview.candidate_name)}, I'm Proctra, your interviewer for the ${job} position. I'll ask ${total} questions. Take your time, answer out loud, and press "I've finished" or simply pause when you're done. You can say "repeat" or "skip" at any point. Let's begin with question one.`;
+  const say = greeting(interview, total);
   await logAgent(admin, interview.id, first.id, `${say} ${first.text}`, 0);
   return response(interview, state, startedAt, { type: "ASK", say, question: clientQuestion(first, total, interview) });
 }
