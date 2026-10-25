@@ -19,7 +19,7 @@ interface CandidateInterviewRow {
   duration_minutes: number;
 }
 
-const DONE = new Set(["COMPLETED", "EVALUATING", "EVALUATED"]);
+const DONE = new Set(["COMPLETED", "EVALUATING", "EVALUATED", "EXPIRED"]);
 
 /** Candidate home: only their own invitations, with no scores, questions, transcripts or proctoring data. */
 export default async function CandidateDashboard() {
@@ -89,7 +89,7 @@ export default async function CandidateDashboard() {
                         </p>
                       </div>
                       <div className="flex items-center gap-3">
-                        <Badge variant="secondary">{done ? "Completed" : r.status === "IN_PROGRESS" ? "In progress" : r.invite_active ? "Invited" : "Link expired"}</Badge>
+                        <Badge variant="secondary">{done ? "Completed — the hiring team will be in touch" : r.status === "IN_PROGRESS" || r.status === "PAUSED" ? "In progress" : r.invite_active ? "Invited" : "Link expired"}</Badge>
                         {link && !done ? (
                           <Button asChild size="sm">
                             <Link href={link}>{r.status === "IN_PROGRESS" ? "Resume interview" : "Start interview"}</Link>

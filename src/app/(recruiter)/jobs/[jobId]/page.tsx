@@ -19,8 +19,9 @@ export default async function JobPage({ params }: PageProps<"/jobs/[jobId]">) {
   if (!job) notFound();
   const { data: interviews } = await supabase
     .from("interviews")
-    .select("id, candidate_name, candidate_email, status, resume_status, created_at")
+    .select("id, candidate_name, candidate_email, status, resume_status, created_at, overall_score, recruiter_decision")
     .eq("job_id", jobId)
+    .order("overall_score", { ascending: false, nullsFirst: false })
     .order("created_at", { ascending: false });
 
   const analysis = jdAnalysisSchema.safeParse(job.jd_analysis);
@@ -32,19 +33,26 @@ export default async function JobPage({ params }: PageProps<"/jobs/[jobId]">) {
         <div className="flex flex-col gap-6">
           <Card>
             <CardHeader>
-              <CardTitle>Candidates</CardTitle>
+              <CardTitle>Candidates (ranked by score)</CardTitle>
             </CardHeader>
             <CardContent className="flex flex-col gap-4">
               {interviews?.length ? (
                 <ul className="divide-y text-sm">
                   {interviews.map((i) => (
                     <li key={i.id}>
-                      <Link href={`/interviews/${i.id}`} className="flex items-center justify-between py-2 hover:text-primary">
+                      <Link
+                        href={["COMPLETED", "EVALUATED", "EXPIRED"].includes(i.status) ? `/dashboard/interviews/${i.id}` : `/interviews/${i.id}`}
+                        className="flex items-center justify-between gap-3 py-2 hover:text-primary"
+                      >
                         <span>
                           <span className="font-medium">{i.candidate_name}</span>{" "}
                           <span className="text-muted-foreground">{i.candidate_email}</span>
                         </span>
-                        <Badge variant="secondary">{i.status}</Badge>
+                        <span className="flex items-center gap-2">
+                          {i.overall_score !== null ? <span className="font-mono">{Number(i.overall_score).toFixed(1)}</span> : null}
+                          {i.recruiter_decision !== "PENDING" ? <Badge>{i.recruiter_decision}</Badge> : null}
+                          <Badge variant="secondary">{i.status}</Badge>
+                        </span>
                       </Link>
                     </li>
                   ))}

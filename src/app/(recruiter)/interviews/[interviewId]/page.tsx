@@ -59,7 +59,14 @@ export default async function InterviewPage({ params }: PageProps<"/interviews/[
             <h1 className="text-2xl font-semibold">{interview.candidate_name}</h1>
             <p className="text-sm text-muted-foreground">{interview.candidate_email}</p>
           </div>
-          <Badge variant="secondary">{interview.status}</Badge>
+          <div className="flex items-center gap-2">
+            {["COMPLETED", "EVALUATED", "EXPIRED"].includes(interview.status) ? (
+              <Link href={`/dashboard/interviews/${interview.id}`} className="text-sm font-medium text-primary underline-offset-4 hover:underline">
+                Open review →
+              </Link>
+            ) : null}
+            <Badge variant="secondary">{interview.status}</Badge>
+          </div>
         </div>
         <div className="grid gap-6 lg:grid-cols-[1fr_380px]">
           <div className="flex flex-col gap-6">
