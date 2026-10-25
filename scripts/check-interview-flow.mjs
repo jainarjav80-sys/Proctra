@@ -57,12 +57,17 @@ check("start blocked before consent", early.status === 403);
 const scopes = session.json.consentItems.map((c) => c.scope);
 check("consent recorded", (await call("consent", { scopes, policyVersion: session.json.policyVersion })).status === 200);
 const pre = await call("preflight", {
-  browser: { userAgent: "flow-check", chromium: true, speechRecognition: true },
-  camera: { ok: true, label: "Fake cam", width: 1280, height: 720 },
-  microphone: { ok: true, label: "Fake mic", peakLevel: 0.4 },
-  speechTest: { ok: true, heard: "I am ready to begin" },
-  display: { fullscreen: true, isExtended: false, screenCount: 1 },
-});
+    browser: { userAgent: "live-check", family: "chrome", chromium: true, speechRecognition: true },
+    camera: { ok: true, label: "Fake", width: 1280, height: 720 },
+    microphone: { ok: true, label: "Fake", peakLevel: 0.4 },
+    speechTest: { ok: true, heard: "I am ready to begin", engine: "web-speech", nativeError: null },
+    faceCheck: { status: "passed", faces: 1 },
+    audio: { headphoneLabelMatch: true, echoTest: { ran: false }, candidateConfirmedHeadphones: false, detection: "labels" },
+    tts: { engine: "kokoro", browserProbe: { ok: false, voices: 0, english: 0, voice: null, reason: "no English voice installed" }, heardConfirmed: true, kokoroLoadMs: 9000 },
+    secondaryCamera: { paired: false },
+    display: { fullscreen: true, isExtended: false, screenCount: 1 },
+    screenShare: { surface: "monitor", width: 1920, height: 1080 },
+  });
 check("preflight recorded", pre.status === 200, JSON.stringify(pre.json));
 
 let r = await call("interview/start");

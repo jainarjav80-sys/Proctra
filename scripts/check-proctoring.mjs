@@ -43,6 +43,7 @@ try {
     audio: { headphoneLabelMatch: true, echoTest: { ran: false }, candidateConfirmedHeadphones: false, detection: "labels" },
     secondaryCamera: { paired: false },
     display: { fullscreen: true, isExtended: false, screenCount: 1 },
+    screenShare: { surface: "monitor", width: 1920, height: 1080 },
   });
   const start = await call("candidate/interview/start", {});
   const q1 = start.json.action.question.id;
@@ -75,7 +76,17 @@ try {
   const pairJwt = decodeURIComponent(new URL(pair.json.url).pathname.split("/m/")[1]);
   const h1 = await fetch(`${base}/api/companion/handshake`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ token: pairJwt }) }).then(async (r) => ({ status: r.status, json: await r.json() }));
   check("phone handshake consumes the token and returns the same channel", h1.status === 200 && h1.json.channel === pair.json.channel, JSON.stringify(h1));
-  check("handshake response leaks no interview data", Object.keys(h1.json).sort().join(",") === "channel,iceServers");
+  check("handshake returns only channel, ICE servers and an upload-only companion token (no interview data)", Object.keys(h1.json).sort().join(",") === "channel,companionToken,iceServers");
+  const pc = await fetch(`${base}/api/companion/recording`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${h1.json.companionToken}` }, body: JSON.stringify({ session: crypto.randomUUID() }) }).then(async (r) => ({ status: r.status, json: await r.json() }));
+  check("phone gets a signed upload URL for its chunks via the companion token", pc.status === 200 && pc.json.path.includes("/secondary/"), JSON.stringify(pc));
+  const badPc = await fetch(`${base}/api/companion/recording`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${seeded.token}` }, body: JSON.stringify({ session: crypto.randomUUID() }) });
+  check("candidate invite token can't be used as a companion token", badPc.status === 401);
+  const pauseRes = await call("candidate/interview/pause", { reason: "SCREEN_SHARE_STOPPED" });
+  const blocked = await call("candidate/interview/turn", { turnId: crypto.randomUUID(), version: 99, kind: "ANSWER", transcript: "x", avgConfidence: 0.9, segments: [] });
+  check("pause → turns are refused while paused (423)", pauseRes.json.paused === "SCREEN_SHARE_STOPPED" && blocked.status === 423, JSON.stringify(blocked.json));
+  await new Promise((r) => setTimeout(r, 1500));
+  const resumed = await call("candidate/interview/resume", {});
+  check("resume re-asks the same question and reports paused time", resumed.json.action?.question?.id === q1 && resumed.json.pausedMs >= 1000, JSON.stringify(resumed.json).slice(0, 200));
   const h2 = await fetch(`${base}/api/companion/handshake`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ token: pairJwt }) });
   check("replaying the QR token → 410 Gone", h2.status === 410);
   const forged = await fetch(`${base}/api/companion/handshake`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ token: pairJwt.slice(0, -4) + "AAAA" }) });
