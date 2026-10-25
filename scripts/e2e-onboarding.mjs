@@ -12,6 +12,8 @@ import { createClient } from "@supabase/supabase-js";
 const base = process.argv[2] ?? "http://localhost:3123";
 const audio = path.resolve("tests/fixtures/answer-kafka.wav");
 const shots = path.resolve(".e2e-shots");
+// FAKE_VIDEO=tests/fixtures/face.y4m → camera shows a face, so the one-face gate should pass.
+const FACE = process.env.FAKE_VIDEO ? path.resolve(process.env.FAKE_VIDEO) : null;
 mkdirSync(shots, { recursive: true });
 const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } });
 
@@ -43,7 +45,14 @@ for (const [name, exe] of BROWSERS) {
     browser = await puppeteer.launch({
       executablePath: exe,
       headless: "new",
-      args: ["--use-fake-ui-for-media-stream", "--use-fake-device-for-media-stream", `--use-file-for-fake-audio-capture=${audio}`, "--autoplay-policy=no-user-gesture-required", "--no-first-run"],
+      args: [
+        "--use-fake-ui-for-media-stream",
+        "--use-fake-device-for-media-stream",
+        `--use-file-for-fake-audio-capture=${audio}`,
+        ...(FACE ? [`--use-file-for-fake-video-capture=${FACE}`] : []),
+        "--autoplay-policy=no-user-gesture-required",
+        "--no-first-run",
+      ],
     });
     const page = await browser.newPage();
     page.setDefaultTimeout(20000);
@@ -86,9 +95,11 @@ for (const [name, exe] of BROWSERS) {
     // Fake camera = test pattern with no face, so the one-face gate (bug #4) must keep Continue locked.
     await page.waitForFunction(() => !/Checking framing/.test(document.querySelector('[data-testid="face-check"]')?.textContent ?? "Checking framing"), { timeout: 30000, polling: 250 }).catch(() => {});
     const faceText = await page.$eval('[data-testid="face-check"]', (el) => el.textContent).catch(() => "");
-    step(`face check ran on-device (MediaPipe): "${faceText}"`, /can't see your face/.test(faceText));
+    if (FACE) await page.waitForFunction(() => /One face/.test(document.querySelector('[data-testid="face-check"]')?.textContent ?? ""), { timeout: 20000, polling: 250 }).catch(() => {});
+    const faceNow = await page.$eval('[data-testid="face-check"]', (el) => el.textContent).catch(() => "");
+    step(`face check ran on-device (MediaPipe): "${faceNow}"`, FACE ? /One face/.test(faceNow) : /can't see your face/.test(faceText));
     const continueEnabled = await page.evaluate(() => !([...document.querySelectorAll("button")].find((b) => b.textContent.trim() === "Continue")?.disabled ?? true));
-    step("Continue stays locked until exactly one face is in view", !continueEnabled);
+    step(FACE ? "Continue unlocks with exactly one face in view" : "Continue stays locked until exactly one face is in view", FACE ? continueEnabled : !continueEnabled);
   } catch (e) {
     step(`run aborted: ${e.message.split("\n")[0]}`, false);
   } finally {

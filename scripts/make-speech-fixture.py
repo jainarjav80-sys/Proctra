@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Synthesises tests/fixtures/answer-kafka.wav with the system libespeak-ng (no audio playback).
 
-Usage: python3 -I scripts/make-speech-fixture.py ["custom sentence"]
+Usage: python3 -I scripts/make-speech-fixture.py ["custom sentence" [out.wav]]
 """
 import ctypes
 import pathlib
@@ -14,7 +14,8 @@ TEXT = (
     else "We store processed event IDs in Postgres in the same transaction as the ledger update, "
     "so a redelivered Kafka message becomes a no-op."
 )
-OUT = pathlib.Path(__file__).resolve().parent.parent / "tests" / "fixtures" / "answer-kafka.wav"
+FIXTURES = pathlib.Path(__file__).resolve().parent.parent / "tests" / "fixtures"
+OUT = FIXTURES / (sys.argv[2] if len(sys.argv) > 2 else "answer-kafka.wav")
 
 lib = ctypes.CDLL("libespeak-ng.so.1")
 AUDIO_OUTPUT_SYNCHRONOUS = 2

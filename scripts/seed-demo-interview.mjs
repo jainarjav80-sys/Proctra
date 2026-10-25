@@ -34,6 +34,13 @@ const { data: job, error: jobErr } = await admin
     description: "Demo job for the Proctra prototype. Java, Spring Boot, Kafka, PostgreSQL and Kubernetes for a payments platform.",
     experience_level: "SENIOR",
     required_skills: ["Java", "Spring Boot", "Kafka", "PostgreSQL"].map((name) => ({ name, mandatory: true, source: "RECRUITER" })),
+    jd_analysis: {
+      summary: "Senior backend engineer owning Java/Spring Boot payment microservices on Kafka and PostgreSQL.",
+      seniority: "SENIOR",
+      competencies: ["Distributed systems", "Event-driven design", "Database performance", "Ownership and mentoring"],
+      responsibilities: ["Build and operate Spring Boot payment services", "Design idempotent Kafka consumers", "Tune PostgreSQL under load"],
+      skills: [{ name: "Java", mandatory: true }, { name: "Spring Boot", mandatory: true }, { name: "Kafka", mandatory: true }, { name: "PostgreSQL", mandatory: true }],
+    },
   })
   .select("id")
   .single();
@@ -50,6 +57,24 @@ const { data: iv, error: ivErr } = await admin
     candidate_name: "Priya Raman",
     candidate_email: candidateEmail,
     question_count: count,
+    resume_status: "PARSED",
+    resume_profile: {
+      headline: "Senior backend engineer in fintech payments",
+      total_years_experience: 6,
+      skills: [
+        { name: "Java", category: "LANGUAGE", evidence: "FinFlow Payments, Ledgerly" },
+        { name: "Spring Boot", category: "FRAMEWORK", evidence: "Decomposed payments monolith into 9 services" },
+        { name: "Apache Kafka", category: "TOOL", evidence: "Idempotent payment-capture consumers with outbox" },
+        { name: "PostgreSQL", category: "DATABASE", evidence: "Cut p99 latency 480→140 ms via indexes and pooling" },
+      ],
+      experience: [
+        { company: "FinFlow Payments", title: "Senior Software Engineer", start: "2021-03", end: "present", highlights: ["Monolith → 9 Spring Boot microservices on Kafka", "Outbox pattern removed duplicate charges"] },
+        { company: "Ledgerly", title: "Software Engineer", start: "2018-07", end: "2021-02", highlights: ["Double-entry ledger APIs", "Reconciliation jobs"] },
+      ],
+      projects: [{ name: "Kafka Replay Tool", tech_stack: ["Java", "Kafka Streams"], summary: "Replays dead-lettered events" }],
+      education: [{ degree: "B.Tech Computer Science", institution: "NIT Trichy", year: "2018" }],
+      certifications: ["AWS Certified Developer – Associate"],
+    },
     duration_minutes: 15,
     response_time_limit_sec: 120,
     max_follow_ups: 1,
@@ -72,7 +97,11 @@ const { error: qErr } = await admin.from("questions").insert(
     difficulty: "ADVANCED",
     target_skills: [skill],
     text,
-    rubric: { rubric_points: [`Explains ${skill} concretely`, "Names a trade-off"], expected_answer_outline: "", red_flags: [] },
+    rubric: {
+      rubric_points: [`Explains how ${skill} was applied concretely`, "Names a real trade-off and why it was accepted", "Grounds the answer in their own experience"],
+      expected_answer_outline: `A strong answer explains the ${skill} mechanics specifically, names a concrete trade-off, and ties it to production experience.`,
+      red_flags: ["Only buzzwords, no mechanism"],
+    },
   })),
 );
 if (qErr) throw qErr;
