@@ -44,3 +44,4 @@ next-env.d.ts
 .live-latency.log
 .e2e-shots/
 /public/vendor/
+.last-full-interview.json

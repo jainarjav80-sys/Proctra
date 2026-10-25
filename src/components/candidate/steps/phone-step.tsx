@@ -35,7 +35,7 @@ export function PhoneQr({ link }: { link: Link }) {
           <video ref={preview} autoPlay muted playsInline className="aspect-[3/4] w-56 rounded-xl border-2 border-success bg-black object-cover" aria-label="Phone camera preview" />
         ) : pairing ? (
           // eslint-disable-next-line @next/next/no-img-element -- generated data URL
-          <img src={pairing.qr} alt="QR code to connect your phone" className="size-60 rounded-xl bg-white p-2" />
+          <img src={pairing.qr} alt="QR code to connect your phone" className="size-60 rounded-xl bg-white p-2" data-testid="pair-qr" data-url={pairing.url} />
         ) : (
           <div className="flex size-60 items-center justify-center rounded-xl border text-sm text-muted-foreground">Preparing QR code…</div>
         )}
