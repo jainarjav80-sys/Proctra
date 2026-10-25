@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useActionState, useState } from "react";
 import type { AuthState } from "@/app/(auth)/_actions/auth";
+import { BrandLogo } from "@/components/brand/logo";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -48,6 +49,7 @@ export function AuthForm({
   return (
     <Card className="w-full max-w-md shadow-card">
       <CardHeader>
+        <BrandLogo className="-ml-1 mb-2 h-12" />
         <CardTitle className="text-2xl">{isLogin ? "Sign in to Proctra" : "Create your Proctra account"}</CardTitle>
         <CardDescription>{inviteNotice ?? "AI interviews with human-reviewed proctoring."}</CardDescription>
       </CardHeader>

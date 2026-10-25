@@ -4,6 +4,7 @@ import { requireCandidateUser } from "@/lib/auth/recruiter";
 import { buildInviteUrl } from "@/lib/interviews/invite";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isFinished } from "@/lib/interview/status";
+import { BrandMark } from "@/components/brand/logo";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -49,7 +50,7 @@ export default async function CandidateDashboard() {
       <header className="border-b bg-card">
         <div className="mx-auto flex h-14 max-w-4xl items-center justify-between gap-3 px-4 sm:px-6">
           <span className="flex shrink-0 items-center gap-2 font-semibold">
-            <span aria-hidden className="size-6 rounded-md" style={{ background: "var(--ai-gradient)" }} />
+            <BrandMark />
             Proctra
           </span>
           <div className="flex min-w-0 items-center gap-3 text-sm text-muted-foreground">
