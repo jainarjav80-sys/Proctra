@@ -271,7 +271,7 @@ try {
   const head = Buffer.concat(parts);
   check(`camera recording starts with a WebM header when chunks are joined in order (${head.length} bytes)`, head.subarray(0, 4).toString("hex") === "1a45dfa3");
   check(`proctoring events logged (${evs.length}: ${[...new Set(evs.map((e) => e.event_type))].join(", ")})`, evs.length >= 0);
-  writeFileSync(".last-full-interview.json", JSON.stringify({ interviewId, email, password }, null, 2));
+  if (KEEP) writeFileSync(".last-full-interview.json", JSON.stringify({ interviewId, email, password }, null, 2));
 } catch (e) {
   check("run completed", false, e.message.split("\n")[0]);
   try {
