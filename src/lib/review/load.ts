@@ -48,7 +48,7 @@ export async function loadReview(interviewId: string) {
   for (const c of chunks ?? []) {
     const session = c.path.split("/")[2] ?? "default";
     const s = sessionsMap.get(session) ?? { track: c.track as TrackName, startMs: Number(c.started_ms ?? 0), paths: [] };
-    s.paths.push(c.path);
+    if (!s.paths.includes(c.path)) s.paths.push(c.path); // rows from an upload retry share the path
     s.startMs = Math.min(s.startMs, Number(c.started_ms ?? s.startMs));
     sessionsMap.set(session, s);
   }
