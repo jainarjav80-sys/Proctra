@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { RecordingSession, TimelineMarker, TrackName } from "@/lib/review/load";
 import { fmtMs, type Pause } from "@/lib/review/timeline";
+import { useSeekRequest } from "./seek-context";
 import { Button } from "@/components/ui/button";
 
 const TRACKS: { name: TrackName; label: string }[] = [
@@ -11,6 +12,13 @@ const TRACKS: { name: TrackName; label: string }[] = [
   { name: "SECONDARY", label: "Phone" },
 ];
 const DRIFT_S = 0.35;
+const MARKER_KIND: Record<TimelineMarker["kind"], string> = {
+  QUESTION: "interviewer question",
+  ANSWER: "answer",
+  OBSERVED: "observation",
+  SUSPICION: "pattern-based flag",
+  WARNING: "reminder shown to the candidate",
+};
 
 /** Appends a session's 10 s WebM chunks, in order, into one MediaSource buffer (gapless). */
 async function attachSession(video: HTMLVideoElement, s: RecordingSession, onBuffered: (ranges: number) => void) {
@@ -49,14 +57,21 @@ export function SyncedPlayer({
   const [playing, setPlaying] = useState(false);
   const [loaded, setLoaded] = useState<Record<string, number>>({});
   const total = Math.max(wallDurationMs, ...sessions.map((s) => s.startMs + 1000), 1000);
+  // Latest sync/playing for callbacks that outlive a render (chunk loading finishes later).
+  const syncRef = useRef<(ms: number, play: boolean) => void>(() => {});
+  const playingRef = useRef(false);
 
-  // Load every session once.
+  // Load every session once (the player itself mounts only when the Recording tab is first needed).
   useEffect(() => {
     for (const s of sessions) {
       const v = videos.current.get(s.id);
       if (!v || v.dataset.attached) continue;
       v.dataset.attached = "1";
-      void attachSession(v, s, (ranges) => setLoaded((p) => ({ ...p, [s.id]: ranges }))).catch(() => setLoaded((p) => ({ ...p, [s.id]: -1 })));
+      void attachSession(v, s, (ranges) => {
+        setLoaded((p) => ({ ...p, [s.id]: ranges }));
+        // A seek may have happened before this stream finished loading: place it now.
+        syncRef.current(tRef.current, playingRef.current);
+      }).catch(() => setLoaded((p) => ({ ...p, [s.id]: -1 })));
     }
   }, [sessions]);
 
@@ -108,12 +123,21 @@ export function SyncedPlayer({
     [playing, sync, total],
   );
 
-  // Other panels (quotes, events) request seeks via a DOM event.
   useEffect(() => {
-    const onSeek = (e: Event) => seek((e as CustomEvent<{ wallMs: number }>).detail.wallMs - 2000);
-    window.addEventListener("review:seek", onSeek);
-    return () => window.removeEventListener("review:seek", onSeek);
+    syncRef.current = sync;
+    playingRef.current = playing;
+  }, [sync, playing]);
+
+  // Quote/event clicks elsewhere on the page arrive as seek requests (including one made before
+  // this player mounted); start 2 s early for context.
+  const request = useSeekRequest();
+  const seekRef = useRef(seek);
+  useEffect(() => {
+    seekRef.current = seek;
   }, [seek]);
+  useEffect(() => {
+    if (request) seekRef.current(request.wallMs - 2000);
+  }, [request]);
 
   const markerColor: Record<TimelineMarker["kind"], string> = {
     QUESTION: "bg-brand-500",
@@ -199,12 +223,17 @@ export function SyncedPlayer({
           .map((m, i) => (
             <button
               key={`${m.kind}-${i}`}
+              type="button"
               title={`${fmtMs(m.atMs)} ${m.label}`}
+              aria-label={`Play from ${fmtMs(m.atMs)}: ${MARKER_KIND[m.kind]}, ${m.label}`}
               data-testid={m.refId && m.kind !== "QUESTION" ? `marker-${m.refId}` : undefined}
               onClick={() => seek(m.atMs - 2000)}
-              className={`absolute top-0 h-3 w-1.5 -translate-x-1/2 rounded-sm ${markerColor[m.kind]}`}
-              style={{ left: `${(m.atMs / total) * 100}%` }}
-            />
+              className="focus-ring absolute -top-1.5 flex h-6 w-6 -translate-x-1/2 items-start justify-center rounded-sm"
+              style={{ left: `${Math.min(100, Math.max(0, (m.atMs / total) * 100))}%` }}
+            >
+              {/* 24 px hit area around a 6 px visual tick. */}
+              <span aria-hidden className={`mt-1.5 h-3 w-1.5 rounded-sm ${markerColor[m.kind]}`} />
+            </button>
           ))}
       </div>
       <p className="text-xs text-muted-foreground">

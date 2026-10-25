@@ -58,6 +58,9 @@ try {
   const page = await browser.newPage();
   page.on("pageerror", (e) => console.log(`page error: ${e.message.slice(0, 160)}`));
   await browser.setCookie(...cookies);
+  // Recording chunks are signed Supabase storage URLs under /recordings/.
+  let chunkRequests = 0;
+  page.on("request", (q) => /\/storage\/v1\/object\/sign\/recordings\//.test(q.url()) && chunkRequests++);
   await page.goto(`${base}/dashboard/interviews/${interviewId}`, { waitUntil: "networkidle2", timeout: 90000 });
 
   // Header + scores.
@@ -69,6 +72,25 @@ try {
   const cards = await page.$$('[data-testid^="question-card-"]');
   const quotes = await page.$$eval('[data-testid="evidence-quote"]', (els) => els.map((e) => e.textContent));
   check(`${cards.length} question cards, ${quotes.length} evidence quotes highlighted in transcripts`, cards.length >= 3 && quotes.length >= 1);
+
+  // Lazy player: nothing downloads while only the Scores tab has been shown.
+  await sleep(1500);
+  check(`no recording chunks downloaded before the recording is needed (${chunkRequests} requests)`, chunkRequests === 0);
+
+  // A quote click BEFORE the player exists must mount it, switch tabs and land on the quote's time.
+  const firstQuote = await page.$('[data-testid="evidence-quote"]');
+  if (firstQuote) {
+    const label = await firstQuote.evaluate((el) => el.querySelector(".font-mono")?.textContent ?? "");
+    const [qm, qs] = label.split(":").map(Number);
+    const quoteMs = (qm * 60 + qs) * 1000;
+    await firstQuote.click();
+    await page.waitForFunction(() => document.querySelector('[data-testid="synced-player"]')?.offsetParent !== null, { timeout: 10000, ...poll });
+    const at = await masterMs(page);
+    check(`quote click before the player existed opened Recording at the quote (${label} → master ${(at / 1000).toFixed(0)} s)`, Math.abs(at - (quoteMs - 2000)) <= 1500);
+    await page.waitForFunction(() => [...document.querySelectorAll("video[data-testid^=player-]")].every((v) => v.dataset.loaded === "1"), { timeout: 90000, ...poll });
+    await inSync(page, "after the first-click seek finished loading");
+    check(`recording chunks loaded once needed (${chunkRequests} requests)`, chunkRequests > 0);
+  }
 
   // Recording tab: all chunks stitched into one buffer per session.
   await page.click('[data-testid="tab-recording"]');
