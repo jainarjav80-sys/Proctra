@@ -19,6 +19,8 @@ const DEFAULT_PROCTORING = {
   gaze_tracking: true,
   object_detection: true,
   record_video: true,
+  require_screen_share: true,
+  show_live_warnings: true,
 };
 
 export default async function InterviewPage({ params }: PageProps<"/interviews/[interviewId]">) {
