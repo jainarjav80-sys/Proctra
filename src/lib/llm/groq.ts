@@ -67,7 +67,8 @@ export class GroqProvider implements LLMProvider {
         const detail = (await res.text()).slice(0, 300);
         throw new LLMError(`HTTP ${res.status}: ${detail}`, this.name, "http", res.status);
       }
-      const json = (await res.json()) as { choices?: { message?: { content?: string } }[] };
+      const json = (await res.json()) as { choices?: { message?: { content?: string } }[]; usage?: { prompt_tokens?: number; completion_tokens?: number } };
+      req.onUsage?.({ model: this.model, promptTokens: json.usage?.prompt_tokens ?? 0, completionTokens: json.usage?.completion_tokens ?? 0 });
       const text = json.choices?.[0]?.message?.content ?? "";
       if (!text) throw new LLMError("Empty response", this.name, "invalid_output");
       return parseAndValidate(text, req.schema, this.name);

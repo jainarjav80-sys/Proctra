@@ -21,6 +21,8 @@ export interface FsmState {
   /** Policy pause (screen share stopped / required phone camera lost). Paused time isn't billed. */
   paused?: { reason: PauseReason; atMs: number } | null;
   pausedTotalMs?: number;
+  /** Completed pauses, for the review timeline (wall ms since start; clockMs = interview clock). */
+  pauses?: { reason: PauseReason; clockMs: number; wallStartMs: number; wallEndMs: number }[];
   /** Idempotency: the last processed turn and the response it produced. */
   lastTurnId?: string;
   lastResponse?: unknown;

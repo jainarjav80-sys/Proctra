@@ -10,6 +10,7 @@ import { resumeProfileSchema } from "@/lib/resume/profile";
 import { CATEGORY_ORDER, difficultyFor, generateBlueprint, regenerateQuestion, type BlueprintInput } from "@/lib/blueprint/generate";
 import { DIFFICULTIES, toStoredRubric } from "@/lib/blueprint/schema";
 import { isDuplicate } from "@/lib/blueprint/dedupe";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 type Owned = Awaited<ReturnType<typeof ownedInterview>>;
 
@@ -71,6 +72,8 @@ export async function generateBlueprintAction(interviewId: string) {
     const owned = await ownedInterview(interviewId);
     assertEditable(owned.interview);
     const input = await blueprintInput(owned);
+    // Evaluation jobs avoid this minute (shared Groq per-minute token limits on the smart tier).
+    await createAdminClient().from("llm_activity").upsert({ key: "blueprint", at: new Date().toISOString() });
     const result = await generateBlueprint(llm(), input);
 
     const { error: delErr } = await owned.supabase
