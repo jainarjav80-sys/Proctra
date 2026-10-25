@@ -44,11 +44,11 @@ export async function updateSession(request: NextRequest) {
   const orgRoute = ORG_PREFIXES.some((p) => path.startsWith(p));
   const candidateRoute = CANDIDATE_PREFIXES.some((p) => path.startsWith(p));
   if (orgRoute || candidateRoute) {
-    if (!role) return redirect("/login", true);
+    if (!role) return redirect("/", true);
     if (orgRoute && role === "CANDIDATE") return redirect(homeFor(role));
     if (candidateRoute && role !== "CANDIDATE") return redirect(homeFor(role));
   }
-  if (role && (path === "/login" || path === "/signup") && !request.nextUrl.searchParams.get("next")) {
+  if (role && (path === "/" || path === "/login" || path === "/signup") && !request.nextUrl.searchParams.get("next")) {
     return redirect(homeFor(role));
   }
   return response;

@@ -18,7 +18,7 @@ export default async function CandidateInterviewPage({ params }: PageProps<"/int
     await requireCandidate(token);
   } catch (e) {
     if (!(e instanceof CandidateAuthError)) throw e;
-    if (e.code === "SIGN_IN") redirect(`/login?next=${encodeURIComponent(`/interview/${raw}`)}`);
+    if (e.code === "SIGN_IN") redirect(`/?next=${encodeURIComponent(`/interview/${raw}`)}`);
     return (
       <main className="dark flex flex-1 items-center justify-center bg-arena p-6 text-foreground">
         <div className="flex max-w-md flex-col gap-4 rounded-xl border bg-card p-8 text-center">

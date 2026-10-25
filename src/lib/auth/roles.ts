@@ -13,7 +13,7 @@ export function roleFromClaims(claims: Record<string, unknown> | null | undefine
 export function homeFor(role: AccountRole | null): string {
   if (role === "CANDIDATE") return "/candidate";
   if (role === "ORG_ADMIN" || role === "RECRUITER") return "/dashboard";
-  return "/login";
+  return "/";
 }
 
 /** Same-site relative redirect targets only. */
