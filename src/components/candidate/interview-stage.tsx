@@ -461,7 +461,7 @@ export function InterviewStage({
       .start()
       .then(() => {
         offVad = detector.on((e) => {
-          if (e === "start" && speaker.current?.speaking) onBargeInRef.current();
+          if (e === "start" && speaker.current?.active) onBargeInRef.current();
         });
       })
       .catch(() => {
