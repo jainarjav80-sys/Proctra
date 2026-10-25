@@ -13,6 +13,7 @@ import { createClient } from "@supabase/supabase-js";
 
 const base = process.argv.find((a) => a.startsWith("http")) ?? "http://localhost:3123";
 const KEEP = process.argv.includes("--keep"); // keep the candidate account + interview for P5
+const FORCE_KOKORO = process.argv.includes("--force-kokoro"); // block the Orpheus route → measures the Kokoro path
 const exe = [process.env.BROWSER, "/snap/bin/chromium", "/snap/bin/brave"].filter(Boolean).find(existsSync);
 const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } });
 const wav = (n) => readFileSync(`tests/fixtures/interview/${n}.wav`).toString("base64");
@@ -35,6 +36,25 @@ const FAKE_MIC = `(() => {
     if (!ctx) { ctx = new AudioContext(); dest = ctx.createMediaStreamDestination(); }
     if (ctx.state === "suspended") ctx.resume();
     return { ctx, dest };
+  };
+  // Wall-clock times at which interviewer audio actually started playing (Orpheus and Kokoro both use <audio>).
+  window.__audioStarts = [];
+  window.__audioLog = [];
+  window.__trace = true;
+  const play = HTMLMediaElement.prototype.play;
+  HTMLMediaElement.prototype.play = function () {
+    if (this.tagName === "AUDIO") {
+      this.addEventListener("playing", () => window.__audioStarts.push(Date.now()), { once: true });
+      if (window.__trace) {
+        const t0 = Date.now();
+        window.__audioLog.push(["play", t0]);
+        this.addEventListener("error", () => window.__audioLog.push(["error", Date.now()]), { once: true });
+      }
+    }
+    return play.call(this).catch((e) => {
+      window.__audioLog?.push(["reject:" + e.name, Date.now()]);
+      throw e;
+    });
   };
   window.__mic = {
     ensure,
@@ -86,7 +106,24 @@ try {
   });
   const page = await browser.newPage();
   await page.evaluateOnNewDocument(FAKE_MIC);
+  const net = []; // [kind, startMs, endMs] for STT and turn requests → splits the gap into its parts
+  const pending = new Map();
+  page.on("request", (q) => {
+    const k = /\/api\/candidate\/(stt|interview\/turn)/.exec(q.url())?.[1];
+    if (k) pending.set(q, [k, Date.now()]);
+  });
+  const done = (q) => {
+    const p = pending.get(q);
+    if (p) net.push([p[0], p[1], Date.now()]), pending.delete(q);
+  };
+  page.on("requestfinished", done);
+  page.on("requestfailed", done);
+  if (FORCE_KOKORO) {
+    await page.setRequestInterception(true);
+    page.on("request", (r) => (r.url().includes("/api/candidate/tts") ? r.abort("failed") : r.continue()));
+  }
   page.on("pageerror", (e) => log(`page error: ${e.message.slice(0, 160)}`));
+  page.on("console", (m) => m.type() === "error" && log(`console: ${m.text().slice(0, 160)}`));
 
   // Sign-in via the invite link.
   await page.goto(`${base}${new URL(seeded.url).pathname}`, { waitUntil: "networkidle0" });
@@ -138,6 +175,9 @@ try {
 
   // Interview loop: answer each question when it's our turn; interrupt Q2 once.
   const seen = new Set();
+  const answerEnds = []; // [key, wall ms when the spoken answer finished]
+  const phases = [];
+  let lastPhase = "";
   let bargedIn = false;
   const deadline = Date.now() + 9 * 60_000;
   while (Date.now() < deadline) {
@@ -152,17 +192,42 @@ try {
       await page.waitForFunction(() => /Go ahead/.test(document.body.innerText), { timeout: 10000, ...poll }).catch(() => log("no 'Go ahead' seen"));
       continue;
     }
+    const phase = /Interviewer is speaking|Your turn|Thinking|Submitting|Processing/i.exec(text)?.[0] ?? "?";
+    if (phase !== lastPhase) phases.push([phase, Date.now()]), (lastPhase = phase);
     if (key && !seen.has(key) && /Your turn/.test(text)) {
       seen.add(key);
       const clip = key === "1" ? "q1" : key === "1f" ? "q1f" : key === "2" ? "q2" : key === "3" ? "q3" : "q2";
       log(`answering ${key}`);
       await say(page, clip);
+      answerEnds.push([key, Date.now()]);
     }
     await sleep(400);
   }
   check(`interview reached "Interview complete" (${((Date.now() - t0) / 1000).toFixed(0)} s total, TTS: ${ttsEngine})`, /Interview complete/.test(await bodyText(page)));
   check(`every question was asked and answered by voice (${[...seen].join(", ")})`, ["1", "2", "3"].every((k) => seen.has(k)));
   check("barge-in during Q2 happened", bargedIn);
+
+  // Answer end → first interviewer audio. Includes the fixed 5 s end-of-answer silence wait.
+  const starts = await page.evaluate(() => window.__audioStarts);
+  const gaps = answerEnds
+    .map(([k, end]) => [k, (starts.find((s) => s > end) ?? NaN) - end])
+    .filter(([, g]) => Number.isFinite(g));
+  for (const [k, end] of answerEnds) {
+    const next = starts.find((x) => x > end) ?? Infinity;
+    const parts = net.filter(([, a]) => a >= end && a < next).map(([n, a, b]) => `${n === "stt" ? "stt" : "turn"} +${((a - end) / 1000).toFixed(1)}s (${((b - a) / 1000).toFixed(2)} s)`);
+    log(`after ${k}: ${parts.join(", ")} → audio +${((next - end) / 1000).toFixed(1)}s`);
+  }
+  const alog = await page.evaluate(() => window.__audioLog);
+  for (const [k, end] of answerEnds) {
+    const until = answerEnds.find(([, e]) => e > end)?.[1] ?? Infinity;
+    const ev = [...alog.filter(([, t]) => t > end && t < until).map(([n, t]) => `${n}@${((t - end) / 1000).toFixed(1)}`), ...phases.filter(([, t]) => t > end && t < until).map(([n, t]) => `[${n}]@${((t - end) / 1000).toFixed(1)}`)];
+    log(`trace ${k}: ${ev.slice(0, 14).join(" ")}`);
+  }
+  for (const [k, g] of gaps) log(`gap after ${k}: ${(g / 1000).toFixed(2)} s total, ${((g - 5000) / 1000).toFixed(2)} s after the 5 s silence wait`);
+  if (gaps.length) {
+    const proc = gaps.map(([, g]) => g - 5000).sort((a, b) => a - b);
+    log(`processing gap (${FORCE_KOKORO ? "kokoro" : ttsEngine}): median ${(proc[Math.floor(proc.length / 2)] / 1000).toFixed(2)} s, max ${(proc.at(-1) / 1000).toFixed(2)} s`);
+  }
 
   await sleep(12000); // final recorder chunks + uploads
   await phone.close();
@@ -173,7 +238,7 @@ try {
   const { data: qs } = await admin.from("questions").select("primary_index, follow_up_index, status, transcript, barge_in_count").eq("interview_id", interviewId).order("primary_index").order("follow_up_index");
   const { data: chunks } = await admin.from("recording_chunks").select("track, path").eq("interview_id", interviewId);
   const { data: evs } = await admin.from("proctoring_events").select("event_type").eq("interview_id", interviewId);
-  check("interview COMPLETED in the DB", iv.status === "COMPLETED", iv.status);
+  check("interview COMPLETED in the DB (EVALUATED once the background evaluation finishes)", ["COMPLETED", "EVALUATED"].includes(iv.status), iv.status);
   check(`TTS/STT engines recorded (tts=${iv.preflight.tts_engine}, stt=${iv.preflight.stt_engine})`, iv.preflight.tts_engine && iv.preflight.stt_engine);
   const primaries = qs.filter((q) => q.follow_up_index === 0);
   check("all 3 primary questions COMPLETED with transcripts", primaries.length === 3 && primaries.every((q) => q.status === "COMPLETED" && (q.transcript ?? "").length > 20), JSON.stringify(primaries.map((q) => [q.status, (q.transcript ?? "").slice(0, 40)])));
@@ -183,7 +248,7 @@ try {
   const byTrack = (t) => chunks.filter((c) => c.track === t).length;
   check(`recordings uploaded: camera ${byTrack("PRIMARY")}, screen ${byTrack("SCREEN")}, phone ${byTrack("SECONDARY")} chunks`, byTrack("PRIMARY") > 0 && byTrack("SCREEN") > 0 && byTrack("SECONDARY") > 0);
   // Chunks of one session concatenate (in path order) into a valid WebM: header must lead.
-  const firstTwo = chunks.filter((c) => c.track === "PRIMARY").sort((a, b) => a.path.localeCompare(b.path)).slice(0, 2);
+  const firstTwo = [...new Set(chunks.filter((c) => c.track === "PRIMARY").map((c) => c.path))].sort().slice(0, 2).map((path) => ({ path }));
   const parts = [];
   for (const c of firstTwo) parts.push(Buffer.from(await (await admin.storage.from("recordings").download(c.path)).data.arrayBuffer()));
   const head = Buffer.concat(parts);
