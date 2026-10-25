@@ -11,6 +11,7 @@ import type { SpeechToText, SttEngine } from "@/lib/speech/types";
 import { classifyIntent } from "@/lib/interview/fsm";
 import type { ClientQuestion, InterviewAction } from "@/lib/interview/engine";
 import { ApiError, candidateFetch, transcribeAudio, withReconnect, type CandidateSession, type TurnResponse } from "./api";
+import { useProctoring } from "./use-proctoring";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 
@@ -38,7 +39,20 @@ const NO_RE = /\b(no|nope|nah|i'?m good|it'?s fine|that'?s fine|not needed)\b/i;
 
 const fmt = (sec: number) => `${Math.floor(Math.max(0, sec) / 60)}:${String(Math.floor(Math.max(0, sec) % 60)).padStart(2, "0")}`;
 
-export function InterviewStage({ token, session, stream, engine: initialEngine }: { token: string; session: CandidateSession; stream: MediaStream; engine: SttEngine }) {
+export function InterviewStage({
+  token,
+  session,
+  stream,
+  engine: initialEngine,
+  secondary,
+}: {
+  token: string;
+  session: CandidateSession;
+  stream: MediaStream;
+  engine: SttEngine;
+  /** Paired phone camera, if connected. */
+  secondary?: { stream: MediaStream | null; connected: boolean; onReconnectHelp?: () => void } | null;
+}) {
   const selfView = useRef<HTMLVideoElement>(null);
   const tts = useRef<BrowserTTS | null>(null);
   const stt = useRef<SpeechToText | null>(null);
@@ -57,6 +71,8 @@ export function InterviewStage({ token, session, stream, engine: initialEngine }
   const [typedMode, setTypedMode] = useState(false);
   const [typed, setTyped] = useState("");
   const [fullscreenLost, setFullscreenLost] = useState(false);
+  const [startedAtMs, setStartedAtMs] = useState(0);
+  const secondaryView = useRef<HTMLVideoElement>(null);
 
   // Mutable interview bookkeeping (read inside timers and recognition/VAD callbacks).
   const s = useRef({
@@ -88,6 +104,36 @@ export function InterviewStage({ token, session, stream, engine: initialEngine }
   useEffect(() => {
     if (selfView.current) selfView.current.srcObject = stream;
   }, [stream]);
+
+  const { notice: proctorNotice, proctor } = useProctoring({
+    token,
+    stream,
+    video: selfView,
+    config: session.proctoring,
+    startedAt: startedAtMs,
+    active: phase !== "ended" && phase !== "error",
+  });
+
+  // Phone camera: show it, analyse it, and log disconnects as observed events.
+  const secondaryWasConnected = useRef(false);
+  useEffect(() => {
+    if (secondaryView.current) secondaryView.current.srcObject = secondary?.stream ?? null;
+    proctor.current?.setSecondary(secondary?.stream && secondary.connected ? secondaryView.current : null);
+    if (!secondary) return;
+    if (secondaryWasConnected.current && !secondary.connected && startedAtMs) {
+      proctor.current?.report({
+        type: "SECONDARY_CAM_DISCONNECTED",
+        source: "SECONDARY_CAM",
+        severity: "MEDIUM",
+        startMs: Math.max(0, Date.now() - startedAtMs),
+        endMs: null,
+        confidence: 1,
+        description: "The phone camera stopped streaming (heartbeat lost).",
+        telemetry: {},
+      });
+    }
+    secondaryWasConnected.current = secondary.connected;
+  }, [secondary, proctor, startedAtMs]);
 
   const rel = () => Math.max(0, Date.now() - s.current.startedAt);
 
@@ -206,6 +252,7 @@ export function InterviewStage({ token, session, stream, engine: initialEngine }
       const st = s.current;
       st.version = res.version;
       st.startedAt = new Date(res.startedAt).getTime();
+      setStartedAtMs(st.startedAt);
       st.durationMinutes = res.durationMinutes;
       const action: InterviewAction = res.action;
       if (action.type === "END") {
@@ -590,6 +637,33 @@ export function InterviewStage({ token, session, stream, engine: initialEngine }
         className="absolute right-0 bottom-0 aspect-video w-56 rounded-lg border-2 border-border bg-black object-cover [transform:scaleX(-1)]"
         aria-label="Your camera"
       />
+
+      {secondary ? (
+        <div className="absolute bottom-0 left-0 w-44">
+          <video
+            ref={secondaryView}
+            autoPlay
+            muted
+            playsInline
+            className={`aspect-[3/4] w-full rounded-lg border-2 bg-black object-cover ${secondary.connected ? "border-border" : "border-danger"}`}
+            aria-label="Phone camera"
+          />
+          <span className={`mt-1 inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-mono text-[10px] ${secondary.connected ? "bg-success-soft text-slate-900" : "bg-danger-soft text-slate-900"}`}>
+            <span className={`size-1.5 rounded-full ${secondary.connected ? "bg-success" : "bg-danger"}`} /> CAM-02: {secondary.connected ? "MOBILE" : "DISCONNECTED"}
+          </span>
+        </div>
+      ) : null}
+
+      {proctorNotice || (secondary && !secondary.connected) ? (
+        <div role="status" className="fixed top-4 left-1/2 z-40 max-w-lg -translate-x-1/2 rounded-lg border border-warning bg-warning-soft px-4 py-2 text-sm text-slate-900 shadow-overlay">
+          {proctorNotice ?? "Phone camera connection lost. Check your phone, or reopen the pairing link on it."}
+          {secondary && !secondary.connected && secondary.onReconnectHelp ? (
+            <button className="ml-2 underline" onClick={secondary.onReconnectHelp}>
+              Show QR code
+            </button>
+          ) : null}
+        </div>
+      ) : null}
 
       {fullscreenLost ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-6" role="dialog" aria-modal="true">
