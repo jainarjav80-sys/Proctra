@@ -68,11 +68,11 @@ export function PhoneCompanion({ token }: { token: string }) {
 
       // Record the workspace view in 10 s chunks (only accepted once the interview is running).
       const supabase = createClient();
-      const upload: ChunkUploader = async (_track, session, _startedMs, blob) => {
+      const upload: ChunkUploader = async (_track, session, _startedMs, blob, seq) => {
         const res = await fetch("/api/companion/recording", {
           method: "POST",
           headers: { "content-type": "application/json", authorization: `Bearer ${body.companionToken}` },
-          body: JSON.stringify({ session }),
+          body: JSON.stringify({ session, seq }),
         });
         const json = await res.json();
         if (res.status === 409) throw new RestartRecording("interview not started");

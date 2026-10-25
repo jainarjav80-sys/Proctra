@@ -3,7 +3,7 @@ import { verifyToken } from "@/lib/auth/tokens";
 import { signChunkUpload } from "@/lib/recording/chunks";
 import { createAdminClient } from "@/lib/supabase/admin";
 
-const body = z.object({ session: z.uuid() });
+const body = z.object({ session: z.uuid(), seq: z.number().int().min(0).max(100_000) });
 
 /**
  * Phone camera chunk upload URL. Auth: the companion token from the pairing handshake. Chunks are
@@ -34,5 +34,5 @@ export async function POST(req: Request) {
   if (!["IN_PROGRESS", "PAUSED"].includes(iv.status) || !iv.started_at) return Response.json({ error: "The interview hasn't started", notStarted: true }, { status: 409 });
   const pausedMs = (iv.fsm_state as { pausedTotalMs?: number } | null)?.pausedTotalMs ?? 0;
   const startedMs = Math.max(0, Date.now() - new Date(iv.started_at).getTime() - pausedMs - 10_000);
-  return Response.json(await signChunkUpload(admin, interviewId, "SECONDARY", parsed.data.session, startedMs));
+  return Response.json(await signChunkUpload(admin, interviewId, "SECONDARY", parsed.data.session, startedMs, parsed.data.seq));
 }

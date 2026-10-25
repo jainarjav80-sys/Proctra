@@ -21,7 +21,7 @@ export const BITRATES = {
 } as const;
 
 type Track = keyof typeof BITRATES;
-export type ChunkUploader = (track: Track, session: string, startedMs: number, blob: Blob) => Promise<void>;
+export type ChunkUploader = (track: Track, session: string, startedMs: number, blob: Blob, seq: number) => Promise<void>;
 
 /** Thrown by an uploader when the server wants a fresh recorder session (e.g. interview not started). */
 export class RestartRecording extends Error {}
@@ -29,8 +29,8 @@ export class RestartRecording extends Error {}
 /** Uploads via the candidate API (signed URL → Storage). */
 export function candidateUploader(token: string): ChunkUploader {
   const supabase = createClient();
-  return async (track, session, startedMs, blob) => {
-    const { path, token: uploadToken } = await candidateFetch<{ path: string; token: string }>(token, "recording", { body: { track, session, startedMs } });
+  return async (track, session, startedMs, blob, seq) => {
+    const { path, token: uploadToken } = await candidateFetch<{ path: string; token: string }>(token, "recording", { body: { track, session, startedMs, seq } });
     const { error } = await supabase.storage.from("recordings").uploadToSignedUrl(path, uploadToken, blob, { contentType: "video/webm", upsert: true });
     if (error) throw error;
   };
@@ -47,6 +47,8 @@ export class ChunkRecorder {
   private stream: MediaStream | null = null;
   session = crypto.randomUUID();
   bytes = 0;
+  /** Order within the session, assigned when the chunk is produced (uploads may finish out of order). */
+  private seq = 0;
 
   constructor(
     private readonly track: Track,
@@ -61,13 +63,14 @@ export class ChunkRecorder {
     const b = BITRATES[this.track];
     this.rec = new MediaRecorder(stream, { mimeType: type, videoBitsPerSecond: b.video, ...(hasAudio ? { audioBitsPerSecond: b.audio || 32_000 } : {}) });
     this.rec.ondataavailable = (e) => {
-      if (!e.data.size) return;
+      if (!e.data.size) return; // note: Chrome can emit a 1-byte first blob (split EBML header); keep it
       this.bytes += e.data.size;
+      const seq = this.seq++;
       const startedMs = Math.max(0, this.clock() - CHUNK_MS);
       const job = (async () => {
         for (let attempt = 0; attempt < 3; attempt++) {
           try {
-            return await this.upload(this.track, this.session, startedMs, e.data);
+            return await this.upload(this.track, this.session, startedMs, e.data, seq);
           } catch (err) {
             if (err instanceof RestartRecording) return this.restart();
             await new Promise((r) => setTimeout(r, 1500 * (attempt + 1)));
@@ -86,6 +89,7 @@ export class ChunkRecorder {
     old.ondataavailable = null;
     old.stop();
     this.session = crypto.randomUUID();
+    this.seq = 0;
     this.start(this.stream);
   }
 
