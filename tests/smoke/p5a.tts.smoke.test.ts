@@ -114,4 +114,27 @@ describe("engine chain and chunking", () => {
     ]);
     expect(chunkForSpeech("Thank you.")).toEqual(["Thank you."]);
   });
+
+  it("splits text into short pieces for Kokoro so the first audio is quick", async () => {
+    const { speechPieces } = await import("@/lib/speech/sentences");
+    const pieces = speechPieces("Thank you. Question 2. How do you make a Kafka consumer idempotent when the same payment event can be delivered more than once?");
+    expect(pieces).toEqual(["Thank you.", "Question 2.", "How do you make a Kafka consumer idempotent", "when the same payment event can be delivered more than once?"]);
+    expect(pieces.every((p) => p.length <= 70)).toBe(true);
+    expect(speechPieces("Walk me through it, step by step, and tell me what you would monitor first in production.")[0]).toBe("Walk me through it, step by step,");
+  });
+
+  it("requests the current sentence before prefetching the next (on-device engines run one at a time)", async () => {
+    const { SentenceSpeaker } = await import("@/lib/speech/sentence-speaker");
+    const calls: string[] = [];
+    const tts = {
+      name: "kokoro" as const,
+      supported: true,
+      speaking: false,
+      speak: async (t: string) => void calls.push(`speak:${t}`),
+      prefetch: (t: string) => void calls.push(`prefetch:${t}`),
+      cancel: () => {},
+    };
+    await new SentenceSpeaker(tts as never).play(["One.", "Two."]);
+    expect(calls).toEqual(["speak:One.", "prefetch:Two.", "speak:Two."]);
+  });
 });
