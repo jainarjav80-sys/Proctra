@@ -167,6 +167,7 @@ export function InterviewApp({ token }: { token: string }) {
           ) : null}
           {step === "audio" ? (
             <AudioStep
+              token={token}
               micDeviceId={stream?.getAudioTracks()[0]?.getSettings().deviceId}
               onDone={(r) => {
                 setAudio(r);
