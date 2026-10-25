@@ -24,11 +24,11 @@ function EntryLink({ href, icon, label, hint }: { href: string; icon: React.Reac
 
 export default function Home() {
   return (
-    <main className="grid min-h-dvh flex-1 bg-background text-foreground lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
+    <main className="grid min-h-dvh flex-1 bg-slate-100 text-foreground lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
       {/* Left: animated contour field + principle card (a short band on phones). */}
-      <section className="relative h-44 overflow-hidden border-b bg-card sm:h-56 lg:h-auto lg:border-r lg:border-b-0">
+      <section className="relative h-44 overflow-hidden border-b border-slate-200 bg-slate-200/60 sm:h-56 lg:h-auto lg:border-r lg:border-b-0">
         <LineField className="absolute inset-0 size-full" />
-        <div aria-hidden className="pointer-events-none absolute inset-0 bg-gradient-to-t from-card/90 via-transparent to-card/40" />
+        <div aria-hidden className="pointer-events-none absolute inset-0 bg-gradient-to-t from-slate-100/90 via-transparent to-slate-100/30" />
         <figure className="absolute bottom-10 left-10 hidden max-w-sm rounded-lg border bg-card/90 p-6 shadow-card backdrop-blur-sm lg:block">
           <p className="text-[11px] font-medium tracking-[0.2em] text-primary uppercase">How Proctra works</p>
           <blockquote className="mt-3 text-[15px] leading-relaxed text-foreground">
