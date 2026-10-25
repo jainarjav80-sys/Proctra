@@ -14,6 +14,15 @@ export type RecordingTrack = "PRIMARY" | "SECONDARY" | "SCREEN";
  */
 export async function signChunkUpload(admin: SupabaseClient, interviewId: string, track: RecordingTrack, session: string, startedMs: number, seq: number) {
   const prefix = `${interviewId}/${track.toLowerCase()}/${session}/`;
+  // Path order (session/seq) is the playback order; chunk_index only keeps rows unique.
+  const path = `${prefix}${String(seq).padStart(5, "0")}.webm`;
+  // A retried upload of the same chunk re-signs the same path instead of adding a duplicate row.
+  const { data: existing } = await admin.from("recording_chunks").select("chunk_index").eq("interview_id", interviewId).eq("path", path).limit(1).maybeSingle();
+  if (existing) {
+    const { data, error } = await admin.storage.from("recordings").createSignedUploadUrl(path, { upsert: true });
+    if (error || !data) throw new Error(error?.message ?? "Couldn't sign upload");
+    return { path: data.path, token: data.token, index: existing.chunk_index as number };
+  }
   const { data: first } = await admin.from("recording_chunks").select("started_ms").eq("interview_id", interviewId).like("path", `${prefix}%`).order("path").limit(1).maybeSingle();
   if (first?.started_ms !== null && first?.started_ms !== undefined) startedMs = Number(first.started_ms);
   const { data: last } = await admin
@@ -26,8 +35,6 @@ export async function signChunkUpload(admin: SupabaseClient, interviewId: string
     .maybeSingle();
   for (let attempt = 0; attempt < 3; attempt++) {
     const index = (last?.chunk_index ?? -1) + 1 + attempt;
-    // Path order (session/seq) is the playback order; chunk_index only keeps rows unique.
-    const path = `${interviewId}/${track.toLowerCase()}/${session}/${String(seq).padStart(5, "0")}.webm`;
     const { error: insErr } = await admin.from("recording_chunks").insert({ interview_id: interviewId, track, chunk_index: index, path, started_ms: startedMs });
     if (insErr) continue; // index taken by a concurrent upload: try the next one
     const { data, error } = await admin.storage.from("recordings").createSignedUploadUrl(path, { upsert: true });
