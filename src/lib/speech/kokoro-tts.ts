@@ -89,10 +89,11 @@ export class KokoroTTS implements TextToSpeech {
    * do. Pieces are therefore generated one at a time; the piece about to be spoken jumps ahead of
    * prefetches.
    */
-  private queue: { text: string; run: () => Promise<void> }[] = [];
+  private queue: { text: string; priority: number; run: () => Promise<void> }[] = [];
   private busy = false;
 
-  private synth(text: string, urgent = false): Promise<Blob> {
+  /** priority: 2 = the piece about to play, 1 = upcoming pieces of this turn, 0 = background warm-up. */
+  private synth(text: string, priority = 1): Promise<Blob> {
     let p = this.cache.get(text);
     if (!p) {
       p = new Promise<Blob>((resolve, reject) => {
@@ -100,7 +101,7 @@ export class KokoroTTS implements TextToSpeech {
           loadKokoro()
             .then((m) => m.generate(text, { voice: VOICE }))
             .then(resolve, reject);
-        this.queue.push({ text, run });
+        this.queue.push({ text, priority, run });
       });
       this.cache.set(text, p);
       p.catch(() => this.cache.delete(text));
@@ -109,10 +110,9 @@ export class KokoroTTS implements TextToSpeech {
         if (old) this.cache.delete(old);
       }
     }
-    if (urgent) {
-      const i = this.queue.findIndex((q) => q.text === text);
-      if (i > 0) this.queue.unshift(...this.queue.splice(i, 1));
-    }
+    const item = this.queue.find((q) => q.text === text);
+    if (item && priority > item.priority) item.priority = priority;
+    this.queue.sort((a, b) => b.priority - a.priority); // stable: FIFO within a priority
     this.pump();
     return p;
   }
@@ -129,7 +129,11 @@ export class KokoroTTS implements TextToSpeech {
   }
 
   prefetch(text: string) {
-    for (const part of speechPieces(text)) void this.synth(part).catch(() => {});
+    for (const part of speechPieces(text)) void this.synth(part, 1).catch(() => {});
+  }
+
+  warm(text: string) {
+    for (const part of speechPieces(text)) void this.synth(part, 0).catch(() => {});
   }
 
   /**
@@ -156,7 +160,7 @@ export class KokoroTTS implements TextToSpeech {
     this.stopAudio();
     let blob: Blob;
     try {
-      blob = await this.synth(text, true);
+      blob = await this.synth(text, 2);
     } catch (e) {
       throw new TtsError(`Kokoro synthesis failed: ${(e as Error).message}`);
     }

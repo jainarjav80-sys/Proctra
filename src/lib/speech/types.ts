@@ -33,6 +33,8 @@ export interface TextToSpeech {
   speak(text: string, opts?: SpeakOptions): Promise<void>;
   /** Starts producing audio for an upcoming sentence so playback can follow without a gap. */
   prefetch?(text: string): void;
+  /** Low-priority background synthesis (phrases that may be needed later); defaults to prefetch. */
+  warm?(text: string): void;
   /** Stops immediately (barge-in). */
   cancel(): void;
   readonly speaking: boolean;

@@ -162,7 +162,7 @@ export function AudioStep({ token, micDeviceId, onDone }: { token: string; micDe
                 onClick={() => {
                   // Pre-synthesise phrases the interviewer says often (no delay when they're needed).
                   const tts = getTts(engine!);
-                  [...(engine === "kokoro" ? KOKORO_LEAD_INS : []), ...FIXED_PHRASES].forEach((p) => tts.prefetch?.(p));
+                  [...(engine === "kokoro" ? KOKORO_LEAD_INS : []), ...FIXED_PHRASES].forEach((p) => (tts.warm ?? tts.prefetch)?.call(tts, p));
                   onDone({
                     tts: { engine: engine!, browserProbe: probe!, heardConfirmed: true, kokoroLoadMs: kokoroMs },
                     echoTest: echo ? { ...echo, ran: true } : { ran: false },
