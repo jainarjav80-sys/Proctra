@@ -33,7 +33,19 @@ const { data: u } = await admin.auth.admin.createUser({ email, password, email_c
 const FAKE_MIC = `(() => {
   let ctx, dest;
   const ensure = () => {
-    if (!ctx) { ctx = new AudioContext(); dest = ctx.createMediaStreamDestination(); }
+    if (!ctx) {
+      ctx = new AudioContext();
+      dest = ctx.createMediaStreamDestination();
+      // A real mic always carries a noise floor; without it the recorder's audio track has holes.
+      const noise = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
+      const ch = noise.getChannelData(0);
+      for (let i = 0; i < ch.length; i++) ch[i] = (Math.random() * 2 - 1) * 0.002;
+      const src = ctx.createBufferSource();
+      src.buffer = noise;
+      src.loop = true;
+      src.connect(dest);
+      src.start();
+    }
     if (ctx.state === "suspended") ctx.resume();
     return { ctx, dest };
   };
@@ -114,7 +126,9 @@ try {
   });
   const done = (q) => {
     const p = pending.get(q);
-    if (p) net.push([p[0], p[1], Date.now()]), pending.delete(q);
+    if (!p) return;
+    net.push([p[0], p[1], Date.now()]);
+    pending.delete(q);
   };
   page.on("requestfinished", done);
   page.on("requestfailed", done);
@@ -193,7 +207,10 @@ try {
       continue;
     }
     const phase = /Interviewer is speaking|Your turn|Thinking|Submitting|Processing/i.exec(text)?.[0] ?? "?";
-    if (phase !== lastPhase) phases.push([phase, Date.now()]), (lastPhase = phase);
+    if (phase !== lastPhase) {
+      phases.push([phase, Date.now()]);
+      lastPhase = phase;
+    }
     if (key && !seen.has(key) && /Your turn/.test(text)) {
       seen.add(key);
       const clip = key === "1" ? "q1" : key === "1f" ? "q1f" : key === "2" ? "q2" : key === "3" ? "q3" : "q2";
