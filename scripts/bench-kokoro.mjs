@@ -36,7 +36,8 @@ try {
         const on = ({ data }) => {
           if (data.id !== id) return;
           w.removeEventListener("message", on);
-          data.error ? reject(new Error(data.error)) : resolve(data);
+          if (data.error) reject(new Error(data.error));
+          else resolve(data);
         };
         w.addEventListener("message", on);
         w.postMessage({ id, text, voice: "af_heart" });
