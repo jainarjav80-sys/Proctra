@@ -19,10 +19,6 @@ Every score is backed by evidence. Every hiring decision is made by a person.
 ![On-device AI](https://img.shields.io/badge/on--device-MediaPipe%20%C2%B7%20COCO--SSD%20%C2%B7%20Kokoro-4F46E5)
 ![Cost](https://img.shields.io/badge/runs%20on-free%20tiers-059669)
 
-<img src="docs/images/interview-live.jpg" alt="Proctra live interview: the AI interviewer asks a question while the candidate's camera and phone side-view are shown" width="900">
-
-<sub>The live interview: the AI asks, listens and follows up, with the candidate's camera and phone side-view on screen.</sub>
-
 </div>
 
 ---
@@ -81,15 +77,6 @@ sequenceDiagram
 ```
 
 </details>
-
-## Screenshots
-
-| | |
-|:---:|:---:|
-| <img src="docs/images/sign-in.jpg" alt="Sign-in landing page" width="440"><br><sub>Sign-in on the landing page</sub> | <img src="docs/images/blueprint.jpg" alt="AI question blueprint with rubrics, built from the resume" width="440"><br><sub>AI question blueprint built from the JD and resume</sub> |
-| <img src="docs/images/phone-pairing.jpg" alt="Phone side camera pairing by QR code" width="440"><br><sub>Phone side-camera pairing by QR</sub> | <img src="docs/images/interview-answering.jpg" alt="Candidate answering while the interviewer listens" width="440"><br><sub>The interviewer listening, with live captions</sub> |
-| <img src="docs/images/review-scores.jpg" alt="Review page with overall score, competencies and the decision panel" width="440"><br><sub>Review: scores, competencies and the decision panel</sub> | <img src="docs/images/review-recording.jpg" alt="Camera, screen and phone recordings playing in sync" width="440"><br><sub>Camera, screen and phone replayed in sync</sub> |
-| <img src="docs/images/review-proctoring.jpg" alt="Proctoring tab labelled observations for human review, not used in scoring" width="440"><br><sub>Observations for human review, not used in scoring</sub> | <img src="docs/images/dashboard.jpg" alt="Interviews dashboard with status, score, flags and decision" width="440"><br><sub>Dashboard with status, score, flags and decision</sub> |
 
 ## Built for trust
 
