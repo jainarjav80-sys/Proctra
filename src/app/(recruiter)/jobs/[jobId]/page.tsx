@@ -3,10 +3,11 @@ import { notFound } from "next/navigation";
 import { z } from "zod";
 import { requireRecruiter } from "@/lib/auth/recruiter";
 import { jdAnalysisSchema, skillSchema } from "@/lib/jobs/analysis";
-import { RecruiterHeader } from "@/components/recruiter/recruiter-header";
 import { JobForm } from "@/components/jobs/job-form";
 import { JdAnalysisCard } from "@/components/jobs/jd-analysis-card";
 import { CandidateForm } from "@/components/interviews/candidate-form";
+import { recruiterHref } from "@/lib/interview/status";
+import { StatusBadge } from "@/components/interviews/status-badge";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
@@ -14,7 +15,7 @@ export const maxDuration = 60;
 
 export default async function JobPage({ params }: PageProps<"/jobs/[jobId]">) {
   const { jobId } = await params;
-  const { supabase, user } = await requireRecruiter();
+  const { supabase } = await requireRecruiter();
   const { data: job } = await supabase.from("jobs").select("*").eq("id", jobId).maybeSingle();
   if (!job) notFound();
   const { data: interviews } = await supabase
@@ -28,7 +29,6 @@ export default async function JobPage({ params }: PageProps<"/jobs/[jobId]">) {
 
   return (
     <>
-      <RecruiterHeader email={user.email} />
       <main className="mx-auto grid w-full max-w-6xl flex-1 gap-6 p-6 lg:grid-cols-[1fr_380px]">
         <div className="flex flex-col gap-6">
           <Card>
@@ -41,7 +41,7 @@ export default async function JobPage({ params }: PageProps<"/jobs/[jobId]">) {
                   {interviews.map((i) => (
                     <li key={i.id}>
                       <Link
-                        href={["COMPLETED", "EVALUATED", "EXPIRED"].includes(i.status) ? `/dashboard/interviews/${i.id}` : `/interviews/${i.id}`}
+                        href={recruiterHref(i.id, i.status)}
                         className="flex items-center justify-between gap-3 py-2 hover:text-primary"
                       >
                         <span>
@@ -51,7 +51,7 @@ export default async function JobPage({ params }: PageProps<"/jobs/[jobId]">) {
                         <span className="flex items-center gap-2">
                           {i.overall_score !== null ? <span className="font-mono">{Number(i.overall_score).toFixed(1)}</span> : null}
                           {i.recruiter_decision !== "PENDING" ? <Badge>{i.recruiter_decision}</Badge> : null}
-                          <Badge variant="secondary">{i.status}</Badge>
+                          <StatusBadge status={i.status} />
                         </span>
                       </Link>
                     </li>

@@ -169,6 +169,15 @@
     @apply font-sans;
   }
 }
+/* Visible keyboard focus for custom (non-shadcn) controls: links, chips, seek links, timeline markers. */
+@utility focus-ring {
+  outline: none;
+  &:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+}
+
 /* Report printing (Download PDF uses the browser's print-to-PDF). */
 @media print {
   @page {

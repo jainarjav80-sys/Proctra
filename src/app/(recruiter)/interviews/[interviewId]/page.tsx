@@ -4,12 +4,12 @@ import { requireRecruiter } from "@/lib/auth/recruiter";
 import { DEFAULT_DISTRIBUTION, resolveQuestionCount, type CategoryDistribution } from "@/lib/interview/config";
 import { buildInviteUrl } from "@/lib/interviews/invite";
 import { resumeProfileSchema } from "@/lib/resume/profile";
-import { RecruiterHeader } from "@/components/recruiter/recruiter-header";
 import { BlueprintEditor, type BlueprintQuestion } from "@/components/interviews/blueprint-editor";
 import { ConfigForm } from "@/components/interviews/config-form";
 import { InvitePanel } from "@/components/interviews/invite-panel";
 import { ResumePanel } from "@/components/interviews/resume-panel";
-import { Badge } from "@/components/ui/badge";
+import { isFinished } from "@/lib/interview/status";
+import { StatusBadge } from "@/components/interviews/status-badge";
 
 export const maxDuration = 60; // resume extraction and blueprint generation call the LLM
 
@@ -25,7 +25,7 @@ const DEFAULT_PROCTORING = {
 
 export default async function InterviewPage({ params }: PageProps<"/interviews/[interviewId]">) {
   const { interviewId } = await params;
-  const { supabase, user } = await requireRecruiter();
+  const { supabase } = await requireRecruiter();
   const { data: interview } = await supabase
     .from("interviews")
     .select("*, jobs(id, title, jd_analysis)")
@@ -49,7 +49,6 @@ export default async function InterviewPage({ params }: PageProps<"/interviews/[
 
   return (
     <>
-      <RecruiterHeader email={user.email} />
       <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-6 p-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
@@ -60,12 +59,12 @@ export default async function InterviewPage({ params }: PageProps<"/interviews/[
             <p className="text-sm text-muted-foreground">{interview.candidate_email}</p>
           </div>
           <div className="flex items-center gap-2">
-            {["COMPLETED", "EVALUATED", "EXPIRED"].includes(interview.status) ? (
-              <Link href={`/dashboard/interviews/${interview.id}`} className="text-sm font-medium text-primary underline-offset-4 hover:underline">
+            {isFinished(interview.status) ? (
+              <Link href={`/dashboard/interviews/${interview.id}`} className="focus-ring rounded-sm text-sm font-medium text-primary underline-offset-4 hover:underline">
                 Open review →
               </Link>
             ) : null}
-            <Badge variant="secondary">{interview.status}</Badge>
+            <StatusBadge status={interview.status} />
           </div>
         </div>
         <div className="grid gap-6 lg:grid-cols-[1fr_380px]">

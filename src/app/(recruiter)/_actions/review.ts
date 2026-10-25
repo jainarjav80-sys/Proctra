@@ -1,10 +1,11 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { headers } from "next/headers";
 import { z } from "zod";
 import { requireRecruiter } from "@/lib/auth/recruiter";
 import { queueEvaluation } from "@/lib/evaluation/schedule";
+import { requestOrigin } from "@/lib/http/origin";
+import { isFinished } from "@/lib/interview/status";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 type Result = { ok: true } | { error: string };
@@ -69,10 +70,8 @@ export async function rerunEvaluation(interviewId: string): Promise<Result> {
   const { supabase } = await requireRecruiter();
   const { data: iv } = await supabase.from("interviews").select("id, status").eq("id", interviewId).maybeSingle();
   if (!iv) return { error: "Interview not found" };
-  if (!["COMPLETED", "EVALUATED", "EXPIRED"].includes(iv.status)) return { error: "The interview isn't finished yet" };
-  const h = await headers();
-  const origin = `${h.get("x-forwarded-proto") ?? "http"}://${h.get("host")}`;
-  await queueEvaluation(createAdminClient(), interviewId, origin, { rerun: true });
+  if (!isFinished(iv.status)) return { error: "The interview isn't finished yet" };
+  await queueEvaluation(createAdminClient(), interviewId, await requestOrigin(), { rerun: true });
   revalidatePath(`/dashboard/interviews/${interviewId}`);
   return { ok: true };
 }
