@@ -27,11 +27,17 @@ export interface SpeakOptions {
 }
 
 export interface TextToSpeech {
-  readonly name: string;
+  readonly name: TtsEngine;
   readonly supported: boolean;
-  /** Resolves when speech finishes or is cancelled. */
+  /** Resolves when playback finishes or is cancelled; rejects if audio could not be produced. */
   speak(text: string, opts?: SpeakOptions): Promise<void>;
+  /** Starts producing audio for an upcoming sentence so playback can follow without a gap. */
+  prefetch?(text: string): void;
   /** Stops immediately (barge-in). */
   cancel(): void;
   readonly speaking: boolean;
 }
+
+export type TtsEngine = "speech-synthesis" | "kokoro";
+
+export class TtsError extends Error {}
