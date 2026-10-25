@@ -20,6 +20,8 @@ export interface ProctorOptions {
   send: (events: ClientEvent[]) => Promise<void>;
   /** Neutral, non-accusatory notices for the candidate UI. */
   onNotice?: (message: string | null) => void;
+  /** Called when a warnable condition starts, with the id its event will be logged under. */
+  onWarning?: (type: ObservedType, eventClientId: string) => void;
 }
 
 interface VisualDetector {
@@ -29,6 +31,8 @@ interface VisualDetector {
   tracker: DurationTracker;
   describe: (i: Interval) => string;
   pendingSnapshot?: string;
+  /** Assigned at onset so a candidate warning can reference the event it belongs to. */
+  pendingId?: string;
 }
 
 /**
@@ -46,7 +50,7 @@ export class Proctor {
   private canvas = typeof document !== "undefined" ? document.createElement("canvas") : null;
   private running = false;
   private detectors: Record<string, VisualDetector> = {};
-  private openSince: Record<string, number> = {};
+  private openSince: Record<string, { at: number; id: string }> = {};
   readonly status = { face: "off" as "off" | "loading" | "on" | "failed", objects: "off" as "off" | "loading" | "on" | "failed" };
 
   constructor(private readonly o: ProctorOptions) {
@@ -70,35 +74,47 @@ export class Proctor {
     };
   }
 
-  private emit(e: Omit<ClientEvent, "clientId">) {
-    this.queue.push({ ...e, clientId: crypto.randomUUID() });
+  private emit(e: Omit<ClientEvent, "clientId">, clientId: string = crypto.randomUUID()) {
+    this.queue.push({ ...e, clientId });
     if (e.severity === "MEDIUM" || e.severity === "HIGH") void this.flush();
+    return clientId;
   }
 
   private step(key: string, condition: boolean, value = 1, video?: HTMLVideoElement, telemetry: Record<string, unknown> = {}) {
     const det = this.detectors[key];
     const now = this.o.clock();
     const r = det.tracker.update(condition, now, value);
-    if (r === "open" && (det.severity === "MEDIUM" || det.severity === "HIGH") && video) det.pendingSnapshot = snapshot(video);
+    if (r === "open") {
+      det.pendingId = crypto.randomUUID();
+      if ((det.severity === "MEDIUM" || det.severity === "HIGH") && video) det.pendingSnapshot = snapshot(video);
+      this.o.onWarning?.(det.type, det.pendingId);
+    }
     if (r && r !== "open") this.closeVisual(det, r, telemetry);
   }
 
   private closeVisual(det: VisualDetector, i: Interval, telemetry: Record<string, unknown> = {}) {
-    this.emit({ type: det.type, source: det.source, severity: det.severity, startMs: i.startMs, endMs: i.endMs, confidence: null, description: det.describe(i), telemetry: { peak: i.peak, ...telemetry }, snapshot: det.pendingSnapshot });
+    this.emit({ type: det.type, source: det.source, severity: det.severity, startMs: i.startMs, endMs: i.endMs, confidence: null, description: det.describe(i), telemetry: { peak: i.peak, ...telemetry }, snapshot: det.pendingSnapshot }, det.pendingId);
     det.pendingSnapshot = undefined;
+    det.pendingId = undefined;
   }
 
   /** Interval events driven by browser signals (tab hidden, blur, fullscreen exit). */
-  private openSignal(key: string) {
-    this.openSince[key] ??= this.o.clock();
+  private openSignal(key: string, warnType?: ObservedType) {
+    if (this.openSince[key]) return;
+    const id = crypto.randomUUID();
+    this.openSince[key] = { at: this.o.clock(), id };
+    if (warnType) this.o.onWarning?.(warnType, id);
   }
-  private closeSignal(key: string, type: ObservedType, severityFor: (ms: number) => Severity | null, describe: (ms: number) => string) {
-    const start = this.openSince[key];
-    if (start === undefined) return;
+  private closeSignal(key: string, type: ObservedType, severityFor: (ms: number) => Severity | null, describe: (ms: number) => string, warnOnClose = false) {
+    const open = this.openSince[key];
+    if (!open) return;
     delete this.openSince[key];
     const end = this.o.clock();
-    const sev = severityFor(end - start);
-    if (sev) this.emit({ type, source: "BROWSER", severity: sev, startMs: start, endMs: end, confidence: 1, description: describe(end - start), telemetry: { duration_ms: end - start } });
+    const sev = severityFor(end - open.at);
+    if (!sev) return;
+    this.emit({ type, source: "BROWSER", severity: sev, startMs: open.at, endMs: end, confidence: 1, description: describe(end - open.at), telemetry: { duration_ms: end - open.at } }, open.id);
+    // e.g. tab switch: the candidate can only see the reminder once they're back.
+    if (warnOnClose) this.o.onWarning?.(type, open.id);
   }
 
   async start() {
@@ -179,7 +195,7 @@ export class Proctor {
 
     onDoc("visibilitychange", () => {
       if (document.visibilityState === "hidden") this.openSignal("hidden");
-      else this.closeSignal("hidden", "TAB_HIDDEN", (ms) => (ms < 100 ? null : ms < 2000 ? "LOW" : "MEDIUM"), (ms) => `Interview tab was hidden for ${(ms / 1000).toFixed(1)} s.`);
+      else this.closeSignal("hidden", "TAB_HIDDEN", (ms) => (ms < 100 ? null : ms < 2000 ? "LOW" : "MEDIUM"), (ms) => `Interview tab was hidden for ${(ms / 1000).toFixed(1)} s.`, true);
     });
     on("blur", () => {
       if (document.visibilityState === "visible") this.openSignal("blur");
@@ -189,7 +205,7 @@ export class Proctor {
     );
     if (c.enforce_fullscreen !== false) {
       onDoc("fullscreenchange", () => {
-        if (!document.fullscreenElement) this.openSignal("fs");
+        if (!document.fullscreenElement) this.openSignal("fs", "FULLSCREEN_EXIT");
         else this.closeSignal("fs", "FULLSCREEN_EXIT", () => "MEDIUM", (ms) => `Left fullscreen for ${(ms / 1000).toFixed(1)} s.`);
       });
     }
@@ -232,9 +248,9 @@ export class Proctor {
     this.secondary = video;
   }
 
-  /** Logs an externally detected event (e.g. phone camera disconnect) through the same pipeline. */
-  report(e: Omit<ClientEvent, "clientId">) {
-    this.emit(e);
+  /** Logs an externally detected event (e.g. phone camera disconnect); returns its id. */
+  report(e: Omit<ClientEvent, "clientId">): string {
+    return this.emit(e);
   }
 
   async flush() {

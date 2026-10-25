@@ -19,6 +19,8 @@ export const OBSERVED_TYPES = [
   "CAMERA_COVERED",
   "VIRTUAL_CAMERA",
   "SECONDARY_CAM_DISCONNECTED",
+  "SCREEN_SHARE_STOPPED",
+  "CANDIDATE_WARNING_SHOWN",
 ] as const;
 export type ObservedType = (typeof OBSERVED_TYPES)[number];
 
@@ -59,4 +61,20 @@ export const OBSERVED_BENIGN: Partial<Record<ObservedType, string[]>> = {
   CAMERA_COVERED: ["Very dark room or a privacy shutter left half-closed."],
   VIRTUAL_CAMERA: ["Some laptops ship with virtual-camera software enabled by default."],
   SECONDARY_CAM_DISCONNECTED: ["Phone screen locked, battery died or Wi-Fi dropped."],
+  SCREEN_SHARE_STOPPED: ["Clicking the browser's \"Stop sharing\" bar by accident."],
+  CANDIDATE_WARNING_SHOWN: ["Informational: records that the candidate was shown a reminder."],
 };
+
+/** Calm, non-accusatory reminders shown to the candidate (never scores or "suspicion" wording). */
+export const CANDIDATE_WARNINGS: Partial<Record<ObservedType, string>> = {
+  FACE_ABSENT: "Please keep your face in view of the camera.",
+  MULTIPLE_FACES: "Please make sure only you are visible on camera.",
+  EXTRA_PERSON: "Please make sure only you are in the room for the interview.",
+  GAZE_AWAY: "Please keep your attention on the interview screen.",
+  PHONE_IN_VIEW: "Please put away any phones or other devices.",
+  TAB_HIDDEN: "Please stay on the interview tab.",
+  FULLSCREEN_EXIT: "Please keep the interview in fullscreen.",
+  SECONDARY_CAM_DISCONNECTED: "Your phone camera disconnected. Please check your phone.",
+};
+
+export const WARNING_COOLDOWN_MS = 30_000;
