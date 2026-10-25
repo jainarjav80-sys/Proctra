@@ -28,6 +28,7 @@ async function attachSession(video: HTMLVideoElement, s: RecordingSession, onBuf
     });
   }
   if (ms.readyState === "open") ms.endOfStream();
+  video.dataset.loaded = "1"; // every chunk appended (tests wait for this)
   onBuffered(video.buffered.length);
 }
 
