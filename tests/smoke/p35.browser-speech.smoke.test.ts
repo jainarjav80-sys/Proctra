@@ -73,3 +73,13 @@ describe("audio checks", () => {
     expect(judgeEcho(0.004, 0.08).result).toBe("warn"); // speakers: interviewer clearly audible
   });
 });
+
+describe("Whisper prompt-echo filter", () => {
+  it("drops output that just repeats the vocabulary prompt, keeps real answers", async () => {
+    const { isPromptEcho } = await import("@/lib/speech/groq-whisper");
+    const prompt = "How do you make a Kafka consumer idempotent? In my answer I talk about Java, Kafka, PostgreSQL.";
+    expect(isPromptEcho("Kafka, PostgreSQL. Kafka, PostgreSQL.", prompt)).toBe(true);
+    expect(isPromptEcho("We store processed event ids in Postgres in the same transaction as the ledger update.", prompt)).toBe(false);
+    expect(isPromptEcho("", prompt)).toBe(false);
+  });
+});

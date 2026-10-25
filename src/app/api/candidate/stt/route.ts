@@ -29,7 +29,9 @@ export async function POST(req: Request) {
         skills.push(...((q.target_skills as string[] | null) ?? []));
       }
     }
-    const prompt = `Technical interview answer. Terms: ${[...new Set(skills)].join(", ")}. ${questionText}`.trim();
+    // Natural prose (not a keyword list), which Whisper is less likely to parrot back on silence.
+    const terms = [...new Set(skills)];
+    const prompt = `${questionText} In my answer I talk about ${terms.length ? terms.join(", ") : "my experience"}.`.trim();
     const result = await transcribe(audio, { prompt, signal: AbortSignal.timeout(20_000) });
     return Response.json(result);
   } catch (e) {
