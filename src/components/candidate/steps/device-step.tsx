@@ -1,11 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { BrowserTTS } from "@/lib/speech/browser-tts";
 import { WebSpeechSTT } from "@/lib/speech/web-speech-stt";
 import { WhisperSTT } from "@/lib/speech/whisper-stt";
 import { mapSttError } from "@/lib/speech/stt-errors";
-import { headphoneLabelMatch, judgeEcho, meterLevel, realInputs, resolveInputLabel, smoothLevel, type DeviceLike, type EchoTestResult } from "@/lib/speech/audio-checks";
+import { headphoneLabelMatch, meterLevel, realInputs, resolveInputLabel, smoothLevel, type DeviceLike, type EchoTestResult } from "@/lib/speech/audio-checks";
 import type { SpeechToText, SttEngine } from "@/lib/speech/types";
 import { FaceTracker } from "@/lib/proctoring/edge/vision";
 import { transcribeAudio } from "../api";
@@ -30,22 +29,6 @@ export interface DeviceResult {
 const VIDEO = { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } };
 const AUDIO = { echoCancellation: true, noiseSuppression: true, autoGainControl: true };
 
-async function averageRms(analyser: AnalyserNode, ms: number) {
-  const buf = new Float32Array(analyser.fftSize);
-  const end = performance.now() + ms;
-  let sum = 0;
-  let n = 0;
-  while (performance.now() < end) {
-    analyser.getFloatTimeDomainData(buf);
-    let s = 0;
-    for (const v of buf) s += v * v;
-    sum += Math.sqrt(s / buf.length);
-    n++;
-    await new Promise((r) => setTimeout(r, 50));
-  }
-  return n ? sum / n : 0;
-}
-
 /**
  * Camera preview, mic picker + level meter, a real speech-recognition probe (falls back to server
  * Whisper when the browser's engine has no backend), and an echo test for barge-in reliability.
@@ -61,8 +44,6 @@ export function DeviceStep({ token, support, onDone }: { token: string; support:
   const [nativeError, setNativeError] = useState<string | null>(null);
   const [heard, setHeard] = useState("");
   const [probe, setProbe] = useState<"idle" | "listening" | "transcribing">("idle");
-  const [echo, setEcho] = useState<EchoTestResult | null>(null);
-  const [echoRunning, setEchoRunning] = useState(false);
   const [confirmedHeadphones, setConfirmedHeadphones] = useState(false);
   const [faceStatus, setFaceStatus] = useState<"loading" | "ready" | "unavailable">("loading");
   const [faces, setFaces] = useState<number | null>(null);
@@ -213,34 +194,6 @@ export function DeviceStep({ token, support, onDone }: { token: string; support:
     runProbeRef.current = runProbe;
   }, [runProbe]);
 
-  /** Speaks a phrase through the speakers and measures how much reaches the echo-cancelled mic. */
-  async function runEchoTest() {
-    setEchoRunning(true);
-    let probeStream: MediaStream | null = null;
-    let ctx: AudioContext | null = null;
-    try {
-      const deviceId = stream?.getAudioTracks()[0]?.getSettings().deviceId;
-      probeStream = await navigator.mediaDevices.getUserMedia({ audio: deviceId ? { ...AUDIO, deviceId: { exact: deviceId } } : AUDIO });
-      ctx = new AudioContext();
-      const analyser = ctx.createAnalyser();
-      analyser.fftSize = 1024;
-      ctx.createMediaStreamSource(probeStream).connect(analyser);
-      const baseline = await averageRms(analyser, 800);
-      const tts = new BrowserTTS();
-      const speaking = tts.speak("This is a short audio test. Please stay quiet for a moment.");
-      await new Promise((r) => setTimeout(r, 400)); // let playback start
-      const during = await averageRms(analyser, 1800);
-      await speaking;
-      setEcho(judgeEcho(baseline, during));
-    } catch {
-      setError("The echo test couldn't access your microphone.");
-    } finally {
-      probeStream?.getTracks().forEach((t) => t.stop());
-      void ctx?.close();
-      setEchoRunning(false);
-    }
-  }
-
   const vTrack = stream?.getVideoTracks()[0];
   const aTrack = stream?.getAudioTracks()[0];
   const settings = vTrack?.getSettings();
@@ -248,7 +201,7 @@ export function DeviceStep({ token, support, onDone }: { token: string; support:
   const currentInput = aTrack?.getSettings().deviceId;
   const inputLabel = aTrack ? resolveInputLabel(aTrack.label, currentInput, devices) : "";
   const labelsSayHeadphones = headphoneLabelMatch(devices);
-  const headphonesOk = labelsSayHeadphones || echo?.result === "pass" || confirmedHeadphones;
+  const headphonesOk = labelsSayHeadphones || confirmedHeadphones;
   const faceOk = faceStatus === "unavailable" || faceStable;
   const ok = Boolean(stream) && heard.trim().split(/\s+/).length >= 2 && faceOk;
 
@@ -331,25 +284,15 @@ export function DeviceStep({ token, support, onDone }: { token: string; support:
           <p>
             {labelsSayHeadphones
               ? "Headphones detected. "
-              : echo?.result === "pass"
-                ? "Echo test passed: your microphone barely picks up the interviewer. "
-                : echo?.result === "warn"
-                  ? "Your microphone picks up sound from your speakers, so the interviewer's voice may be mistaken for you interrupting. Headphones are recommended. "
-                  : "Headphones are recommended so the interviewer's voice doesn't echo into your mic. "}
+              : "Headphones are recommended so the interviewer's voice doesn't echo into your mic (you'll test this on the next step). "}
             You can interrupt the interviewer at any time just by speaking.
           </p>
-          <div className="flex flex-wrap items-center gap-3">
-            <Button size="sm" variant="outline" onClick={runEchoTest} disabled={echoRunning}>
-              {echoRunning ? "Testing… stay quiet" : echo ? "Run echo test again" : "Run echo test"}
-            </Button>
-            {!labelsSayHeadphones ? (
-              <label className="flex items-center gap-2">
-                <Checkbox checked={confirmedHeadphones} onCheckedChange={(v) => setConfirmedHeadphones(Boolean(v))} />
-                I&apos;m using headphones
-              </label>
-            ) : null}
-            {echo ? <span className="font-mono text-xs">pickup ×{echo.ratio}</span> : null}
-          </div>
+          {!labelsSayHeadphones ? (
+            <label className="flex items-center gap-2">
+              <Checkbox checked={confirmedHeadphones} onCheckedChange={(v) => setConfirmedHeadphones(Boolean(v))} />
+              I&apos;m using headphones
+            </label>
+          ) : null}
         </div>
       ) : null}
 
@@ -371,9 +314,9 @@ export function DeviceStep({ token, support, onDone }: { token: string; support:
               faceCheck: { status: faceStatus === "unavailable" ? "unavailable" : "passed", faces: faces ?? 0 },
               audio: {
                 headphoneLabelMatch: labelsSayHeadphones,
-                echoTest: echo ? { ...echo, ran: true } : { ran: false },
+                echoTest: { ran: false }, // filled in by the audio step, which uses the real TTS engine
                 candidateConfirmedHeadphones: confirmedHeadphones,
-                detection: labelsSayHeadphones ? "labels" : echo?.result === "pass" ? "echo-test" : confirmedHeadphones ? "candidate-confirmed" : "none",
+                detection: labelsSayHeadphones ? "labels" : confirmedHeadphones ? "candidate-confirmed" : "none",
               },
             })
           }
