@@ -3,7 +3,10 @@
 //   A1 = admin of org A, A2 = recruiter who joined org A by invite code, B1 = admin of org B,
 //   C1 = candidate invited by org A, C2 = another candidate.
 // Verifies same-org sharing and every cross-boundary denial, then deletes everything it created.
-// Usage: node --env-file=.env.local scripts/check-rls.mjs
+// Also checks the P5 surface: private recordings/snapshots buckets, the service-role-only
+// evaluation_input() RPC, override/decision writes, and (if the app is running) the review page,
+// CSV export and evaluation-status routes over HTTP with each account's session cookie.
+// Usage: node --env-file=.env.local scripts/check-rls.mjs [appBaseUrl, default http://localhost:3123]
 import { createClient } from "@supabase/supabase-js";
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -15,6 +18,24 @@ const results = [];
 const check = (name, pass, detail = "") => results.push({ name, pass: Boolean(pass), detail });
 const userIds = [];
 const orgIds = new Set();
+let ivId = "none";
+const appBase = process.argv.find((a) => a.startsWith("http")) ?? "http://localhost:3123";
+const projectRef = new URL(url).hostname.split(".")[0];
+
+/** @supabase/ssr cookie for a signed-in client: "base64-" + base64url(session JSON), chunked at 3180. */
+async function sessionCookie(client) {
+  const { data } = await client.auth.getSession();
+  const value = `base64-${Buffer.from(JSON.stringify(data.session)).toString("base64url")}`;
+  const name = `sb-${projectRef}-auth-token`;
+  if (value.length <= 3180) return `${name}=${value}`;
+  return value.match(/.{1,3180}/g).map((c, i) => `${name}.${i}=${c}`).join("; ");
+}
+async function httpStatus(path, client) {
+  const headers = client ? { cookie: await sessionCookie(client) } : {};
+  const res = await fetch(`${appBase}${path}`, { headers, redirect: "manual" });
+  const body = res.status === 200 ? await res.text() : "";
+  return { status: res.status, body };
+}
 
 async function account(tag, metadata) {
   const email = `rls-${tag}-${stamp}@proctra.test`;
@@ -66,12 +87,21 @@ try {
     .insert({ job_id: job.id, candidate_name: "Cand One", candidate_email: c1.email.toUpperCase(), blueprint_approved_at: new Date().toISOString(), status: "READY" })
     .select()
     .single();
+  ivId = iv.id;
   await a1.client.from("questions").insert({ interview_id: iv.id, primary_index: 1, category: "TECHNICAL", difficulty: "ADVANCED", text: "Secret question text" });
   await admin.from("proctoring_events").insert({ interview_id: iv.id, tier: "OBSERVED_EVENT", source: "BROWSER", event_type: "OBS_TAB_HIDDEN", severity: "LOW", start_ms: 1, description: "rls" });
   await admin.from("transcript_segments").insert({ interview_id: iv.id, speaker: "CANDIDATE", text: "secret answer", start_ms: 1 });
   await admin.from("interviews").update({ overall_score: 4.2 }).eq("id", iv.id);
 
-  const TABLES = ["jobs", "interviews", "questions", "proctoring_events", "transcript_segments", "recording_chunks", "score_overrides", "pair_tokens"];
+  const TABLES = ["jobs", "interviews", "questions", "proctoring_events", "transcript_segments", "recording_chunks", "score_overrides", "pair_tokens", "llm_activity"];
+
+  // P5 fixtures: a recording chunk, a snapshot and an evaluation result for org A's interview.
+  const recPath = `${iv.id}/primary/rls-session/00000.webm`;
+  const snapPath = `${iv.id}/rls-snapshot.jpg`;
+  await admin.storage.from("recordings").upload(recPath, new Blob([new Uint8Array([0x1a, 0x45, 0xdf, 0xa3])]), { contentType: "video/webm", upsert: true });
+  await admin.storage.from("snapshots").upload(snapPath, new Blob([new Uint8Array([0xff, 0xd8, 0xff])]), { contentType: "image/jpeg", upsert: true });
+  await admin.from("recording_chunks").insert({ interview_id: iv.id, track: "PRIMARY", chunk_index: 0, path: recPath, started_ms: 0 });
+  await admin.from("interviews").update({ status: "EVALUATED", evaluation_status: "DONE", completed_at: new Date().toISOString(), started_at: new Date(Date.now() - 600_000).toISOString() }).eq("id", iv.id);
 
   // Same org: A2 sees everything A1 created.
   check("same-org recruiter A2 sees org A's job", (await rows(a2.client, "jobs")) === 1);
@@ -98,6 +128,42 @@ try {
   check("B1 cannot attach an interview to org A's job", crossIv);
   const { data: files } = await b1.client.storage.from("resumes").list(iv.id);
   check("B1 cannot list org A's resume folder", (files ?? []).length === 0);
+
+  // P5: private media, evaluation input, review routes.
+  for (const [label, client] of [["owning-org admin A1", a1.client], ["cross-org B1", b1.client], ["candidate C1", c1.client], ["anonymous", anon]]) {
+    const { data: rec } = await client.storage.from("recordings").download(recPath);
+    const { data: snap } = await client.storage.from("snapshots").download(snapPath);
+    const { data: signedRec } = await client.storage.from("recordings").createSignedUrl(recPath, 60);
+    const { data: signedSnap } = await client.storage.from("snapshots").createSignedUrl(snapPath, 60);
+    check(`${label} cannot read or sign recordings/snapshots directly (server-signed URLs only)`, !rec && !snap && !signedRec && !signedSnap);
+    const { data: evalIn, error: evalErr } = await client.rpc("evaluation_input", { iid: iv.id });
+    check(`${label} cannot call evaluation_input()`, evalErr && !evalIn, JSON.stringify(evalIn)?.slice(0, 80));
+  }
+  const { data: q1 } = await admin.from("questions").select("id").eq("interview_id", iv.id).limit(1).single();
+  const { error: crossOverride } = await b1.client.from("score_overrides").insert({ interview_id: iv.id, question_id: q1.id, old_score: 4, new_score: 10, reason: "cross-org" });
+  check("B1 cannot add a score override to org A's interview", crossOverride);
+  const { error: candOverride } = await c1.client.from("score_overrides").insert({ interview_id: iv.id, question_id: q1.id, old_score: 4, new_score: 10, reason: "candidate" });
+  check("candidate cannot add a score override", candOverride);
+  const { data: crossDecision } = await b1.client.from("interviews").update({ recruiter_decision: "ADVANCE" }).eq("id", iv.id).select();
+  const { data: candDecision } = await c1.client.from("interviews").update({ recruiter_decision: "ADVANCE" }).eq("id", iv.id).select();
+  check("B1 and the candidate cannot set the hiring decision", (crossDecision ?? []).length === 0 && (candDecision ?? []).length === 0);
+
+  const reachable = await fetch(`${appBase}/api/health`).then(() => true, () => false);
+  if (reachable) {
+    const routes = [`/dashboard/interviews/${iv.id}`, `/api/recruiter/interviews/${iv.id}/scores.csv`, `/api/recruiter/interviews/${iv.id}/evaluation`];
+    for (const path of routes) {
+      const own = await httpStatus(path, a1.client);
+      check(`owning org gets 200 from ${path.replace(iv.id, ":id")}`, own.status === 200, `${own.status}`);
+      for (const [label, client] of [["cross-org B1", b1.client], ["candidate C1", c1.client], ["anonymous", null]]) {
+        const r2 = await httpStatus(path, client);
+        check(`${label} is refused ${path.replace(iv.id, ":id")} (${r2.status})`, r2.status !== 200 && !r2.body.includes("Cand One"), `${r2.status}`);
+      }
+    }
+    const page = await httpStatus(`/dashboard/interviews/${iv.id}`, a1.client);
+    check("review page HTML carries no long-lived storage URLs (signed URLs expire ≤ 15 min)", !/\/object\/public\//.test(page.body));
+  } else {
+    check(`HTTP route checks skipped: app not reachable at ${appBase}`, true);
+  }
 
   // Candidates: no writes, no role changes, only their own safe dashboard rows.
   const { error: candJob } = await c1.client.from("jobs").insert({ title: "cand job", description: "z".repeat(60) });
@@ -131,6 +197,8 @@ try {
 } catch (e) {
   check("script ran without errors", false, e.message);
 } finally {
+  await admin.storage.from("recordings").remove([`${ivId}/primary/rls-session/00000.webm`]).catch(() => {});
+  await admin.storage.from("snapshots").remove([`${ivId}/rls-snapshot.jpg`]).catch(() => {});
   for (const id of userIds) await admin.auth.admin.deleteUser(id);
   if (orgIds.size) await admin.from("organizations").delete().in("id", [...orgIds]);
 }
