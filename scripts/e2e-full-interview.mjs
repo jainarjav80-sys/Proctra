@@ -141,7 +141,7 @@ try {
 
   // Sign-in via the invite link.
   await page.goto(`${base}${new URL(seeded.url).pathname}`, { waitUntil: "networkidle0" });
-  await page.waitForFunction(() => location.pathname === "/login", { timeout: 20000, ...poll });
+  await page.waitForFunction(() => location.pathname === "/", { timeout: 20000, ...poll });
   await page.type("#password", password);
   await page.click("button[type=submit]");
   await page.waitForFunction(() => location.pathname.startsWith("/interview/"), { timeout: 30000, ...poll });

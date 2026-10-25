@@ -58,7 +58,7 @@ for (const [name, exe] of BROWSERS) {
     page.setDefaultTimeout(20000);
 
     await page.goto(`${base}${link}`);
-    await page.waitForFunction(() => location.pathname === "/login");
+    await page.waitForFunction(() => location.pathname === "/");
     step("invite link without a session redirects to sign-in", true);
     const prefilled = await page.$eval("#email", (el) => el.value);
     step("invited email is prefilled from the token", prefilled === email);
