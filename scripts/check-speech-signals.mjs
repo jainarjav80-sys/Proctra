@@ -40,11 +40,16 @@ try {
   const session = await call("session", null, "GET");
   await call("consent", { scopes: session.json.consentItems.map((c) => c.scope), policyVersion: session.json.policyVersion });
   await call("preflight", {
-    browser: { userAgent: "speech-check", chromium: true, speechRecognition: true },
+    browser: { userAgent: "live-check", family: "chrome", chromium: true, speechRecognition: true },
     camera: { ok: true, label: "Fake", width: 1280, height: 720 },
-    microphone: { ok: true, label: "Fake", peakLevel: 0.3 },
-    speechTest: { ok: true, heard: "ready" },
+    microphone: { ok: true, label: "Fake", peakLevel: 0.4 },
+    speechTest: { ok: true, heard: "I am ready to begin", engine: "web-speech", nativeError: null },
+    faceCheck: { status: "passed", faces: 1 },
+    audio: { headphoneLabelMatch: true, echoTest: { ran: false }, candidateConfirmedHeadphones: false, detection: "labels" },
+    tts: { engine: "kokoro", browserProbe: { ok: false, voices: 0, english: 0, voice: null, reason: "no English voice installed" }, heardConfirmed: true, kokoroLoadMs: 9000 },
+    secondaryCamera: { paired: false },
     display: { fullscreen: true, isExtended: false, screenCount: 1 },
+    screenShare: { surface: "monitor", width: 1920, height: 1080 },
   });
   let r = await call("interview/start");
   const q1 = r.json.action.question;

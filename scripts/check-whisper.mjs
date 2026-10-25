@@ -53,6 +53,7 @@ try {
     speechTest: { ok: true, heard: "I am ready to begin", engine: "groq-whisper", nativeError: "network" },
     audio: { headphoneLabelMatch: false, echoTest: { ran: true, baselineRms: 0.004, duringRms: 0.005, ratio: 1.25, result: "pass" }, candidateConfirmedHeadphones: false, detection: "echo-test" },
     display: { fullscreen: true, isExtended: false, screenCount: 1 },
+    screenShare: { surface: "monitor", width: 1920, height: 1080 },
   });
   const start = await json("interview/start", {});
   const r2 = await stt();
