@@ -3,6 +3,7 @@ import { logout } from "@/app/(auth)/_actions/auth";
 import { requireCandidateUser } from "@/lib/auth/recruiter";
 import { buildInviteUrl } from "@/lib/interviews/invite";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { isFinished } from "@/lib/interview/status";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -19,7 +20,7 @@ interface CandidateInterviewRow {
   duration_minutes: number;
 }
 
-const DONE = new Set(["COMPLETED", "EVALUATING", "EVALUATED", "EXPIRED"]);
+
 
 /** Candidate home: only their own invitations, with no scores, questions, transcripts or proctoring data. */
 export default async function CandidateDashboard() {
@@ -28,7 +29,7 @@ export default async function CandidateDashboard() {
   const rows = (data ?? []) as CandidateInterviewRow[];
 
   // The start link needs the current invite nonce, which the RPC deliberately doesn't return.
-  const activeIds = rows.filter((r) => r.invite_active && !DONE.has(r.status)).map((r) => r.id);
+  const activeIds = rows.filter((r) => r.invite_active && !isFinished(r.status)).map((r) => r.id);
   const links = new Map<string, string>();
   if (activeIds.length) {
     const { data: invites } = await createAdminClient()
@@ -46,13 +47,15 @@ export default async function CandidateDashboard() {
   return (
     <>
       <header className="border-b bg-card">
-        <div className="mx-auto flex h-14 max-w-4xl items-center justify-between px-6">
-          <span className="flex items-center gap-2 font-semibold">
+        <div className="mx-auto flex h-14 max-w-4xl items-center justify-between gap-3 px-4 sm:px-6">
+          <span className="flex shrink-0 items-center gap-2 font-semibold">
             <span aria-hidden className="size-6 rounded-md" style={{ background: "var(--ai-gradient)" }} />
             Proctra
           </span>
-          <div className="flex items-center gap-3 text-sm text-muted-foreground">
-            <span>{user.email}</span>
+          <div className="flex min-w-0 items-center gap-3 text-sm text-muted-foreground">
+            <span className="hidden max-w-56 truncate sm:inline" title={user.email}>
+              {user.email}
+            </span>
             <form action={logout}>
               <Button variant="outline" size="sm" type="submit">
                 Sign out
@@ -61,11 +64,11 @@ export default async function CandidateDashboard() {
           </div>
         </div>
       </header>
-      <main className="mx-auto w-full max-w-4xl flex-1 p-6">
+      <main className="mx-auto w-full max-w-4xl flex-1 p-4 sm:p-6">
         <h1 className="mb-6 text-2xl font-semibold">Your interviews</h1>
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Invitations for {user.email}</CardTitle>
+            <CardTitle className="text-base break-words">Invitations for {user.email}</CardTitle>
           </CardHeader>
           <CardContent>
             {error ? (
@@ -78,7 +81,7 @@ export default async function CandidateDashboard() {
               <ul className="divide-y">
                 {rows.map((r) => {
                   const link = links.get(r.id);
-                  const done = DONE.has(r.status);
+                  const done = isFinished(r.status);
                   return (
                     <li key={r.id} className="flex flex-wrap items-center justify-between gap-3 py-4 text-sm">
                       <div>

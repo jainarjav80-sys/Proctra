@@ -1,12 +1,11 @@
 import Link from "next/link";
 import { requireRecruiter } from "@/lib/auth/recruiter";
-import { RecruiterHeader } from "@/components/recruiter/recruiter-header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 
 export default async function JobsPage() {
-  const { supabase, user } = await requireRecruiter();
+  const { supabase } = await requireRecruiter();
   const { data: jobs, error } = await supabase
     .from("jobs")
     .select("id, title, experience_level, created_at, jd_analysis_hash, interviews(count)")
@@ -14,7 +13,6 @@ export default async function JobsPage() {
 
   return (
     <>
-      <RecruiterHeader email={user.email} />
       <main className="mx-auto w-full max-w-6xl flex-1 p-6">
         <div className="mb-6 flex items-center justify-between">
           <h1 className="text-2xl font-semibold">Jobs</h1>
