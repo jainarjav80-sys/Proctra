@@ -72,6 +72,7 @@ export async function processResume(interviewId: string, path: string) {
     try {
       ({ text } = await extractResumeText(new Uint8Array(await blob.arrayBuffer())));
     } catch (e) {
+      if (!(e instanceof ResumeParseError)) console.error("resume extraction failed", e);
       const message = e instanceof ResumeParseError ? e.message : "The resume couldn't be parsed";
       await admin.storage.from("resumes").remove([path]);
       await supabase.from("interviews").update({ resume_status: "FAILED", resume_error: message, resume_path: null }).eq("id", interviewId);
