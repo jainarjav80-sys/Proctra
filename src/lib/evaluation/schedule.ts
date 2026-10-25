@@ -38,7 +38,7 @@ export async function queueEvaluation(admin: SupabaseClient, interviewId: string
   kickEvaluation(origin, interviewId);
 }
 
-/** Marks an interview that ran out of time/invite as EXPIRED; ones with answers get evaluated. */
+/** Marks an interview that ran out of time/invite as EXPIRED (ones with answers get evaluated) and queues missed evaluations. */
 export async function sweepExpired(admin: SupabaseClient, orgId: string, origin: string) {
   const { data: stale } = await admin
     .from("interviews")
@@ -54,4 +54,7 @@ export async function sweepExpired(admin: SupabaseClient, orgId: string, origin:
     const { count } = await admin.from("questions").select("id", { count: "exact", head: true }).eq("interview_id", iv.id).not("transcript", "is", null);
     if (count) await queueEvaluation(admin, iv.id, origin);
   }
+  // Finished interviews whose queueing never landed (e.g. a failed write at END) get queued now.
+  const { data: missed } = await admin.from("interviews").select("id").eq("org_id", orgId).eq("status", "COMPLETED").eq("evaluation_status", "NONE").limit(10);
+  for (const iv of missed ?? []) await queueEvaluation(admin, iv.id, origin);
 }
