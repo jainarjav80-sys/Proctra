@@ -12,6 +12,8 @@ export interface JsonRequest<T> {
   /** Reasoning effort for reasoning models (Groq gpt-oss). Live turns use "low" for latency. */
   reasoning?: "low" | "medium" | "high";
   signal?: AbortSignal;
+  /** Token accounting (prompt/completion tokens, model) for cost and quota reporting. */
+  onUsage?: (u: { model: string; promptTokens: number; completionTokens: number }) => void;
 }
 
 export interface LLMProvider {

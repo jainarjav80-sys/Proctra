@@ -155,7 +155,15 @@ export async function resumeInterview(admin: Admin, interview: CandidateIntervie
   if (!state.paused) return startOrResume(admin, interview);
   const wall = Date.now() - new Date(interview.started_at).getTime();
   const pausedFor = Math.max(0, wall - (state.paused.atMs + (state.pausedTotalMs ?? 0)));
-  const next: FsmState = { ...state, version: state.version + 1, paused: null, pausedTotalMs: (state.pausedTotalMs ?? 0) + pausedFor, repeats: 0 };
+  const wallStartMs = state.paused.atMs + (state.pausedTotalMs ?? 0);
+  const next: FsmState = {
+    ...state,
+    version: state.version + 1,
+    paused: null,
+    pausedTotalMs: (state.pausedTotalMs ?? 0) + pausedFor,
+    pauses: [...(state.pauses ?? []), { reason: state.paused.reason, clockMs: state.paused.atMs, wallStartMs, wallEndMs: wallStartMs + pausedFor }],
+    repeats: 0,
+  };
   await commit(admin, interview, state, next, { status: "IN_PROGRESS" });
   const q = await loadQuestion(admin, state.questionId);
   return response(interview, next, interview.started_at, {
