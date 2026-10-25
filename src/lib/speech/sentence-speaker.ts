@@ -65,10 +65,13 @@ export class SentenceSpeaker {
     for (let i = from; i < sentences.length; i++) {
       if (token !== this.token) return "interrupted";
       this.index = i;
-      if (sentences[i + 1]) this.tts.prefetch?.(sentences[i + 1]);
       this.hooks.onSentenceStart?.(i, sentences[i]);
       try {
-        await this.tts.speak(sentences[i]);
+        // Request this sentence before prefetching the next, so an on-device engine (one model
+        // run at a time) never makes the current sentence wait behind the next one.
+        const speaking = this.tts.speak(sentences[i]);
+        if (sentences[i + 1]) this.tts.prefetch?.(sentences[i + 1]);
+        await speaking;
       } catch {
         await this.recover(sentences[i], token);
       }

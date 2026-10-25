@@ -14,6 +14,7 @@ const nextConfig: NextConfig = {
       { source: "/interview/:path*", headers: isolation },
       { source: "/m/:path*", headers: isolation },
       { source: "/dev/:path*", headers: isolation },
+      { source: "/workers/:path*", headers: isolation }, // a worker is isolated (ORT threads) only if its script is
     ];
   },
   // Cache Components is off: almost every page reads the session or interview state per request,

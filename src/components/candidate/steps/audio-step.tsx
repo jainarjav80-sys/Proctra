@@ -5,7 +5,7 @@ import { BrowserTTS } from "@/lib/speech/browser-tts";
 import { loadKokoro, type LoadProgress } from "@/lib/speech/kokoro-tts";
 import { runEchoTest } from "@/lib/speech/echo-test";
 import { getTts, nextEngine, setTtsToken } from "@/lib/speech/tts";
-import { FIXED_PHRASES } from "@/lib/speech/sentences";
+import { FIXED_PHRASES, KOKORO_LEAD_INS } from "@/lib/speech/sentences";
 import type { EchoTestResult } from "@/lib/speech/audio-checks";
 import type { TtsEngine } from "@/lib/speech/types";
 import { Button } from "@/components/ui/button";
@@ -155,7 +155,7 @@ export function AudioStep({ token, micDeviceId, onDone }: { token: string; micDe
                 onClick={() => {
                   // Pre-synthesise phrases the interviewer says often (no delay when they're needed).
                   const tts = getTts(engine!);
-                  FIXED_PHRASES.forEach((p) => tts.prefetch?.(p));
+                  [...(engine === "kokoro" ? KOKORO_LEAD_INS : []), ...FIXED_PHRASES].forEach((p) => tts.prefetch?.(p));
                   onDone({
                     tts: { engine: engine!, browserProbe: probe!, heardConfirmed: true, kokoroLoadMs: kokoroMs },
                     echoTest: echo ? { ...echo, ran: true } : { ran: false },
