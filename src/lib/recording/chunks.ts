@@ -8,7 +8,7 @@ export type RecordingTrack = "PRIMARY" | "SECONDARY" | "SCREEN";
  * assigned server-side (max + 1 per track) so a reconnecting phone or re-shared screen can't
  * collide; the session id in the path groups chunks that concatenate into one WebM file.
  */
-export async function signChunkUpload(admin: SupabaseClient, interviewId: string, track: RecordingTrack, session: string, startedMs: number) {
+export async function signChunkUpload(admin: SupabaseClient, interviewId: string, track: RecordingTrack, session: string, startedMs: number, seq: number) {
   const { data: last } = await admin
     .from("recording_chunks")
     .select("chunk_index")
@@ -19,7 +19,8 @@ export async function signChunkUpload(admin: SupabaseClient, interviewId: string
     .maybeSingle();
   for (let attempt = 0; attempt < 3; attempt++) {
     const index = (last?.chunk_index ?? -1) + 1 + attempt;
-    const path = `${interviewId}/${track.toLowerCase()}/${session}/${String(index).padStart(5, "0")}.webm`;
+    // Path order (session/seq) is the playback order; chunk_index only keeps rows unique.
+    const path = `${interviewId}/${track.toLowerCase()}/${session}/${String(seq).padStart(5, "0")}.webm`;
     const { error: insErr } = await admin.from("recording_chunks").insert({ interview_id: interviewId, track, chunk_index: index, path, started_ms: startedMs });
     if (insErr) continue; // index taken by a concurrent upload: try the next one
     const { data, error } = await admin.storage.from("recordings").createSignedUploadUrl(path, { upsert: true });

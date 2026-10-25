@@ -6,6 +6,7 @@ const body = z.object({
   track: z.enum(["PRIMARY", "SCREEN"]),
   session: z.uuid(),
   startedMs: z.number().int().min(0),
+  seq: z.number().int().min(0).max(100_000),
 });
 
 /**
@@ -22,7 +23,7 @@ export async function POST(req: Request) {
     if (!["IN_PROGRESS", "PAUSED"].includes(interview.status)) return Response.json({ error: "The interview isn't running" }, { status: 409 });
     const parsed = body.safeParse(await req.json());
     if (!parsed.success) return Response.json({ error: "Invalid chunk" }, { status: 400 });
-    return Response.json(await signChunkUpload(admin, interview.id, parsed.data.track, parsed.data.session, parsed.data.startedMs));
+    return Response.json(await signChunkUpload(admin, interview.id, parsed.data.track, parsed.data.session, parsed.data.startedMs, parsed.data.seq));
   } catch (e) {
     return candidateError(e);
   }
