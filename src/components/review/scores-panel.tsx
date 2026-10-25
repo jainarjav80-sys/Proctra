@@ -211,7 +211,9 @@ export function ScoresPanel({
                   {quotes.map((qt) => (
                     <button
                       key={qt.quote}
-                      className="text-left text-xs hover:underline"
+                      type="button"
+                      aria-label={qt.start_ms !== null ? `Play the recording at ${fmtMs(clockToWall(qt.start_ms, pauses))}: “${qt.quote}”` : undefined}
+                      className="focus-ring rounded-sm text-left text-xs hover:underline"
                       onClick={() => qt.start_ms !== null && seekTo(clockToWall(qt.start_ms, pauses))}
                       disabled={qt.start_ms === null}
                       data-testid="evidence-quote"

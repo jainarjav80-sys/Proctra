@@ -63,7 +63,7 @@ export function AuthForm({
                 aria-pressed={type === t.id}
                 data-testid={`account-${t.id}`}
                 onClick={() => setType(t.id)}
-                className={`rounded-lg border p-3 text-left text-sm transition-colors ${type === t.id ? "border-primary bg-accent" : "hover:bg-muted"}`}
+                className={`focus-ring rounded-lg border p-3 text-left text-sm transition-colors ${type === t.id ? "border-primary bg-accent" : "hover:bg-muted"}`}
               >
                 <span className="block font-medium">{t.title}</span>
                 <span className="block text-xs text-muted-foreground">{t.detail}</span>

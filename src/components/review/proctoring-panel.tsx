@@ -61,7 +61,7 @@ export function ProctoringPanel({ events, bargeIns }: { events: EventRow[]; barg
           {suspicions.map((s) => (
             <div key={s.id} className="rounded-md border p-3" data-testid="suspicion">
               <div className="flex flex-wrap items-center gap-2">
-                <button className="font-mono text-xs underline" onClick={() => seekTo(s.wallMs)}>{fmtMs(s.wallMs)}</button>
+                <button type="button" className="focus-ring rounded-sm font-mono text-xs underline" aria-label={`Play the recording at ${fmtMs(s.wallMs)}`} onClick={() => seekTo(s.wallMs)}>{fmtMs(s.wallMs)}</button>
                 <Badge variant={s.severity === "HIGH" ? "destructive" : "secondary"}>{s.severity}</Badge>
                 <span className="font-medium">{s.event_type.replace(/^INF_/, "").replaceAll("_", " ").toLowerCase()}</span>
                 <span className="text-xs text-muted-foreground">confidence {s.confidence?.toFixed(2) ?? "–"} · rule {String(s.telemetry.rule ?? "–")}</span>
@@ -73,7 +73,7 @@ export function ProctoringPanel({ events, bargeIns }: { events: EventRow[]; barg
                 {s.contributing_event_ids.map((id) => {
                   const ev = byId.get(id);
                   return (
-                    <button key={id} className="mr-2 font-mono underline" onClick={() => ev && seekTo(ev.wallMs)} title={id}>
+                    <button key={id} type="button" className="focus-ring mr-2 rounded-sm font-mono underline" onClick={() => ev && seekTo(ev.wallMs)} title={id} aria-label={ev ? `Play the recording at ${fmtMs(ev.wallMs)}: ${ev.event_type}` : `Event ${id.slice(0, 8)}`}>
                       {ev ? `${ev.event_type} @ ${fmtMs(ev.wallMs)}` : id.slice(0, 8)}
                     </button>
                   );
@@ -98,7 +98,7 @@ export function ProctoringPanel({ events, bargeIns }: { events: EventRow[]; barg
               <tbody>
                 {observed.map((e) => (
                   <tr key={e.id} className="border-t align-top" data-testid="observed-event">
-                    <td className="py-1 pr-2"><button className="font-mono underline" onClick={() => seekTo(e.wallMs)} data-testid={`event-seek-${e.id}`}>{fmtMs(e.wallMs)}</button></td>
+                    <td className="py-1 pr-2"><button type="button" className="focus-ring rounded-sm font-mono underline" aria-label={`Play the recording at ${fmtMs(e.wallMs)}: ${e.event_type}`} onClick={() => seekTo(e.wallMs)} data-testid={`event-seek-${e.id}`}>{fmtMs(e.wallMs)}</button></td>
                     <td className="pr-2"><span className="font-medium">{e.event_type}</span><br /><span className="text-muted-foreground">{e.description}</span></td>
                     <td className="pr-2">{dur(e)}</td>
                     <td className="pr-2">{e.source}</td>
@@ -129,7 +129,7 @@ export function ProctoringPanel({ events, bargeIns }: { events: EventRow[]; barg
           <CardContent className="flex flex-col gap-1 text-xs">
             {warnings.map((w) => (
               <p key={w.id}>
-                <button className="font-mono underline" onClick={() => seekTo(w.wallMs)}>{fmtMs(w.wallMs)}</button> “{String(w.telemetry.message ?? "")}” (triggered by {String(w.telemetry.trigger_type ?? "")} event {String(w.telemetry.trigger_client_id ?? "").slice(0, 8)})
+                <button type="button" className="focus-ring rounded-sm font-mono underline" aria-label={`Play the recording at ${fmtMs(w.wallMs)}`} onClick={() => seekTo(w.wallMs)}>{fmtMs(w.wallMs)}</button> “{String(w.telemetry.message ?? "")}” (triggered by {String(w.telemetry.trigger_type ?? "")} event {String(w.telemetry.trigger_client_id ?? "").slice(0, 8)})
               </p>
             ))}
           </CardContent>
