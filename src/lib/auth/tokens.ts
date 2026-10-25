@@ -7,10 +7,12 @@ import { env } from "@/lib/config/env";
  *  - candidate: invite link → access to one interview. Valid for the invite window.
  *  - pair: QR code → companion phone handshake. 300 s and single use (nonce consumed in DB).
  */
-export type TokenType = "candidate" | "pair";
+export type TokenType = "candidate" | "pair" | "companion";
 
 export const CANDIDATE_TOKEN_TTL_SEC = 7 * 24 * 3600;
 export const PAIR_TOKEN_TTL_SEC = 300;
+/** Issued to the phone after a successful pairing; only authorises phone-chunk uploads. */
+export const COMPANION_TOKEN_TTL_SEC = 3 * 3600;
 
 const ISSUER = "proctra";
 
@@ -29,7 +31,7 @@ export async function signToken(
   interviewId: string,
   opts: { ttlSec?: number; nonce?: string; secret?: string } = {},
 ): Promise<string> {
-  const ttl = opts.ttlSec ?? (type === "pair" ? PAIR_TOKEN_TTL_SEC : CANDIDATE_TOKEN_TTL_SEC);
+  const ttl = opts.ttlSec ?? (type === "pair" ? PAIR_TOKEN_TTL_SEC : type === "companion" ? COMPANION_TOKEN_TTL_SEC : CANDIDATE_TOKEN_TTL_SEC);
   return new SignJWT({ typ: type, ...(opts.nonce ? { nonce: opts.nonce } : {}) })
     .setProtectedHeader({ alg: "HS256" })
     .setIssuer(ISSUER)
