@@ -4,7 +4,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { CandidateInterview } from "@/lib/candidate/session";
 import { llm } from "@/lib/llm";
 import { decideFollowUp } from "./follow-up";
-import { canAskFollowUp, decideTurn, timeIsUp, type FsmState, type QuestionStatus } from "./fsm";
+import { canAskFollowUp, decideTurn, timeIsUp, type FsmState, type PauseReason, type QuestionStatus } from "./fsm";
 import { recordSpeechSignals } from "@/lib/proctoring/speech-signals";
 
 /** What the client should do next. The client never decides interview flow itself. */
@@ -27,6 +27,8 @@ export interface TurnResponse {
   version: number;
   startedAt: string;
   durationMinutes: number;
+  /** Total paused time so far; the client subtracts it for the interview clock. */
+  pausedMs: number;
   action: InterviewAction;
 }
 
@@ -53,6 +55,11 @@ export const turnSchema = z.object({
 export type TurnInput = z.infer<typeof turnSchema>;
 
 export class TurnConflictError extends Error {}
+export class InterviewPausedError extends Error {
+  constructor(public readonly reason: PauseReason) {
+    super("The interview is paused");
+  }
+}
 
 type Admin = SupabaseClient;
 interface QuestionRow {
@@ -99,8 +106,13 @@ async function primaryAt(admin: Admin, interviewId: string, primaryIndex: number
   return (data as QuestionRow | null) ?? null;
 }
 
+/** Interview-clock time: wall time since start minus completed and current pauses. */
 function elapsedMs(interview: CandidateInterview) {
-  return interview.started_at ? Date.now() - new Date(interview.started_at).getTime() : 0;
+  if (!interview.started_at) return 0;
+  const st = interview.fsm_state as FsmState | null;
+  const wall = Date.now() - new Date(interview.started_at).getTime();
+  const current = st?.paused ? Math.max(0, wall - (st.paused.atMs + (st.pausedTotalMs ?? 0))) : 0;
+  return Math.max(0, wall - (st?.pausedTotalMs ?? 0) - current);
 }
 
 async function logAgent(admin: Admin, interviewId: string, questionId: string | null, text: string, atMs: number) {
@@ -122,7 +134,35 @@ async function commit(admin: Admin, interview: CandidateInterview, prev: FsmStat
 }
 
 function response(interview: CandidateInterview, state: FsmState, startedAt: string, action: InterviewAction): TurnResponse {
-  return { version: state.version, startedAt, durationMinutes: interview.duration_minutes, action };
+  return { version: state.version, startedAt, durationMinutes: interview.duration_minutes, pausedMs: state.pausedTotalMs ?? 0, action };
+}
+
+/** Pauses at the current question (policy: screen share stopped / required phone lost). */
+export async function pauseInterview(admin: Admin, interview: CandidateInterview, reason: PauseReason) {
+  const state = interview.fsm_state as FsmState | null;
+  if (!state || state.phase === "COMPLETED") throw new Error("The interview isn't running");
+  if (state.paused) return { paused: state.paused.reason };
+  const next: FsmState = { ...state, version: state.version + 1, paused: { reason, atMs: elapsedMs(interview) } };
+  await commit(admin, interview, state, next, { status: "PAUSED" });
+  return { paused: reason };
+}
+
+/** Resumes and re-asks the current question; paused time is added to pausedTotalMs. */
+export async function resumeInterview(admin: Admin, interview: CandidateInterview): Promise<TurnResponse> {
+  const state = interview.fsm_state as FsmState | null;
+  if (!state || !interview.started_at) throw new Error("The interview hasn't started");
+  if (!state.paused) return startOrResume(admin, interview);
+  const wall = Date.now() - new Date(interview.started_at).getTime();
+  const pausedFor = Math.max(0, wall - (state.paused.atMs + (state.pausedTotalMs ?? 0)));
+  const next: FsmState = { ...state, version: state.version + 1, paused: null, pausedTotalMs: (state.pausedTotalMs ?? 0) + pausedFor, repeats: 0 };
+  await commit(admin, interview, state, next, { status: "IN_PROGRESS" });
+  const q = await loadQuestion(admin, state.questionId);
+  return response(interview, next, interview.started_at, {
+    type: "ASK",
+    resumed: true,
+    say: "Thanks for waiting. Let's pick up where we left off.",
+    question: clientQuestion(q, state.totalPrimary, interview),
+  });
 }
 
 /** Starts the interview, or resumes it at the current question after a refresh/reconnect. */
@@ -177,6 +217,7 @@ export async function processTurn(admin: Admin, interview: CandidateInterview, i
   const startedAt = interview.started_at as string;
   if (input.turnId === state.lastTurnId && state.lastResponse) return state.lastResponse as TurnResponse;
   if (state.phase === "COMPLETED") return response(interview, state, startedAt, { type: "END", say: "This interview is already complete." });
+  if (state.paused) throw new InterviewPausedError(state.paused.reason);
   if (input.version !== state.version) throw new TurnConflictError("Out-of-date turn. Resyncing…");
 
   const now = elapsedMs(interview);

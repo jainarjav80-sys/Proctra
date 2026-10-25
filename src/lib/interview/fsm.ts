@@ -4,6 +4,8 @@
  * and never add primary questions, so the interview can't grow past its configuration.
  */
 
+export type PauseReason = "SCREEN_SHARE_STOPPED" | "PHONE_CAMERA_LOST";
+
 export type QuestionStatus = "PENDING" | "IN_PROGRESS" | "COMPLETED" | "SKIPPED" | "UNANSWERED";
 
 export interface FsmState {
@@ -16,6 +18,9 @@ export interface FsmState {
   questionAskedAtMs: number; // relative to interview start
   repeats: number; // repeat requests on the current question
   clarifies: number; // "audio unclear" re-asks on the current question
+  /** Policy pause (screen share stopped / required phone camera lost). Paused time isn't billed. */
+  paused?: { reason: PauseReason; atMs: number } | null;
+  pausedTotalMs?: number;
   /** Idempotency: the last processed turn and the response it produced. */
   lastTurnId?: string;
   lastResponse?: unknown;

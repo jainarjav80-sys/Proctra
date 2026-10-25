@@ -10,7 +10,7 @@ export interface CandidateSession {
   durationMinutes: number;
   responseTimeLimitSec: number;
   secondaryCamPolicy: "MANDATORY" | "RECOMMENDED" | "DISABLED";
-  proctoring: Partial<Record<"enforce_fullscreen" | "block_multi_monitor" | "gaze_tracking" | "object_detection" | "record_video", boolean>>;
+  proctoring: Partial<Record<"enforce_fullscreen" | "block_multi_monitor" | "gaze_tracking" | "object_detection" | "record_video" | "require_screen_share" | "show_live_warnings", boolean>>;
   status: string;
   consented: boolean;
   consentScopes: string[];
@@ -23,6 +23,7 @@ export interface TurnResponse {
   version: number;
   startedAt: string;
   durationMinutes: number;
+  pausedMs: number;
   action: InterviewAction;
   conflict?: boolean;
 }
