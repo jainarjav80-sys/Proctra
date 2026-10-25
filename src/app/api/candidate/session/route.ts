@@ -23,6 +23,7 @@ export async function GET(req: Request) {
       proctoring,
       status: interview.status,
       consented: Boolean(interview.consent),
+      consentScopes: ((interview.consent as { scopes?: string[] } | null)?.scopes ?? []) as string[],
       preflightDone: Boolean(interview.preflight),
       policyVersion: CONSENT_POLICY_VERSION,
       consentItems: consentItems({ secondaryCamPolicy: interview.secondary_cam_policy, recordVideo: proctoring.record_video !== false }),

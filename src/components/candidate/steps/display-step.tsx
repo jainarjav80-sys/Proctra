@@ -28,12 +28,14 @@ export function DisplayStep({
   session,
   support,
   devices,
+  phonePaired,
   onDone,
 }: {
   token: string;
   session: CandidateSession;
   support: BrowserSupport;
   devices: DeviceResult;
+  phonePaired: boolean;
   onDone: () => void;
 }) {
   const needFullscreen = session.proctoring.enforce_fullscreen !== false;
@@ -63,6 +65,7 @@ export function DisplayStep({
         body: {
           browser: { userAgent: support.userAgent.slice(0, 500), family: support.info.family, chromium: support.info.chromium, speechRecognition: support.speechApi },
           ...devices,
+          secondaryCamera: { paired: phonePaired },
           display: { fullscreen: Boolean(document.fullscreenElement), isExtended: t.isExtended, screenCount: t.screenCount },
         },
       });
