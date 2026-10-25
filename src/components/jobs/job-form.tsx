@@ -105,6 +105,9 @@ export function JobForm({ initial }: { initial?: JobFormValues }) {
                 <button
                   type="button"
                   title="Toggle mandatory / preferred"
+                  aria-pressed={s.mandatory}
+                  aria-label={`${s.name}: ${s.mandatory ? "mandatory" : "preferred"}. Toggle mandatory or preferred`}
+                  className="focus-ring rounded-sm"
                   onClick={() =>
                     setSkills((prev) =>
                       prev.map((x) => (x.name === s.name ? { ...x, mandatory: !x.mandatory, source: "RECRUITER" } : x)),
@@ -118,7 +121,7 @@ export function JobForm({ initial }: { initial?: JobFormValues }) {
                 <button
                   type="button"
                   aria-label={`Remove ${s.name}`}
-                  className="rounded px-1 hover:bg-black/10"
+                  className="focus-ring rounded px-1 hover:bg-black/10"
                   onClick={() => setSkills((prev) => prev.filter((x) => x.name !== s.name))}
                 >
                   ×

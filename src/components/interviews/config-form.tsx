@@ -107,14 +107,16 @@ export function ConfigForm({ interviewId, initial, locked }: { interviewId: stri
           </div>
 
           <div className="flex flex-col gap-2">
-            <Label>Question categories (%)</Label>
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <Label id="categories-label">Question categories (%)</Label>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4" role="group" aria-labelledby="categories-label">
               {CATEGORIES.map((k) => (
                 <div key={k} className="flex flex-col gap-1">
-                  <span className="text-xs text-muted-foreground">
+                  <label htmlFor={`cat-${k}`} className="text-xs text-muted-foreground">
                     {k.toLowerCase()} · {split[k]} q
-                  </span>
+                  </label>
                   <Input
+                    id={`cat-${k}`}
+                    aria-label={`${k.toLowerCase()} questions, percent`}
                     type="number"
                     min={0}
                     max={100}
@@ -125,7 +127,7 @@ export function ConfigForm({ interviewId, initial, locked }: { interviewId: stri
                 </div>
               ))}
             </div>
-            {splitTotal !== 100 ? <p className="text-danger">Split adds up to {splitTotal}%; it must be 100%.</p> : null}
+            {splitTotal !== 100 ? <p role="alert" className="text-danger">Split adds up to {splitTotal}%; it must be 100%.</p> : null}
           </div>
 
           <div className="flex flex-col gap-3">

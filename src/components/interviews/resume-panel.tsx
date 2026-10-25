@@ -74,6 +74,8 @@ export function ResumePanel({
           ref={input}
           type="file"
           accept={ACCEPT}
+          aria-label="Resume file (PDF or DOCX)"
+          tabIndex={-1}
           className="hidden"
           onChange={(e) => {
             const f = e.target.files?.[0];

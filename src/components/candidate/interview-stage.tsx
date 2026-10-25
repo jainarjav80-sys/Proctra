@@ -732,7 +732,7 @@ export function InterviewStage({
         <div role="status" className="fixed top-4 left-1/2 z-40 max-w-lg -translate-x-1/2 rounded-lg border border-warning bg-warning-soft px-4 py-2 text-sm text-slate-900 shadow-overlay">
           {proctorNotice ?? "Phone camera connection lost. Check your phone, or reopen the pairing link on it."}
           {secondary && !secondary.connected && secondary.onReconnectHelp ? (
-            <button className="ml-2 underline" onClick={secondary.onReconnectHelp}>
+            <button type="button" className="focus-ring ml-2 rounded-sm underline" onClick={secondary.onReconnectHelp}>
               Show QR code
             </button>
           ) : null}
