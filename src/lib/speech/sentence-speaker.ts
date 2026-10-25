@@ -36,14 +36,30 @@ export class SentenceSpeaker {
     return this.tts.speaking;
   }
 
+  /** True for the whole interviewer turn, including the gap while the next clip is fetched. */
+  get active() {
+    return this.playing;
+  }
+  private playing = false;
+
   /** Stops playback now; a pending play() resolves "interrupted". */
   interrupt() {
     this.token++;
+    this.playing = false;
     this.tts.cancel();
   }
 
   async play(sentences: string[], from = 0): Promise<PlayResult> {
     const token = ++this.token;
+    this.playing = true;
+    try {
+      return await this.playFrom(sentences, from, token);
+    } finally {
+      if (token === this.token) this.playing = false;
+    }
+  }
+
+  private async playFrom(sentences: string[], from: number, token: number): Promise<PlayResult> {
     this.tts.cancel();
     this.sentences = sentences;
     for (let i = from; i < sentences.length; i++) {
