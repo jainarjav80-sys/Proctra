@@ -17,6 +17,8 @@ const TOGGLES: [keyof InterviewConfigInput["proctoring"], string][] = [
   ["gaze_tracking", "Face presence & gaze tracking"],
   ["object_detection", "Phone / book / extra person detection"],
   ["record_video", "Record video for review"],
+  ["require_screen_share", "Require entire-screen sharing (recorded; stopping it pauses the interview)"],
+  ["show_live_warnings", "Show live warnings to candidate (calm reminders, e.g. “keep your face in view”)"],
 ];
 
 function int(v: string) {

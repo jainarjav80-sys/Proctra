@@ -132,6 +132,8 @@ const configSchema = z.object({
     gaze_tracking: z.boolean(),
     object_detection: z.boolean(),
     record_video: z.boolean(),
+    require_screen_share: z.boolean(),
+    show_live_warnings: z.boolean(),
   }),
 });
 export type InterviewConfigInput = z.infer<typeof configSchema>;

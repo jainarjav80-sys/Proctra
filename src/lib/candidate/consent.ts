@@ -1,6 +1,6 @@
 /** Itemised consent shown at onboarding (shared by the candidate UI and the API). */
 
-export const CONSENT_POLICY_VERSION = "2026-10-25";
+export const CONSENT_POLICY_VERSION = "2026-10-25.2"; // bump whenever consent text changes
 
 export type ConsentScope =
   | "AUDIO_VIDEO_RECORDING"
@@ -41,8 +41,8 @@ export function consentItems(opts: { secondaryCamPolicy: "MANDATORY" | "RECOMMEN
     },
     {
       scope: "SCREEN_ENVIRONMENT_MONITORING",
-      title: "Browser and display checks",
-      detail: "Tab switches, leaving fullscreen and extra connected displays are logged with timestamps.",
+      title: "Screen sharing and browser checks",
+      detail: "You'll share your entire screen, which is recorded with the interview. Tab switches, leaving fullscreen and extra connected displays are logged with timestamps.",
       required: true,
     },
   ];
@@ -50,7 +50,7 @@ export function consentItems(opts: { secondaryCamPolicy: "MANDATORY" | "RECOMMEN
     items.push({
       scope: "SECONDARY_CAMERA",
       title: "Phone camera (workspace view)",
-      detail: "Your phone streams a side view of your desk during the interview. Its audio is never captured.",
+      detail: "Your phone streams and records a side view of your desk during the interview. Its audio is never captured.",
       required: opts.secondaryCamPolicy === "MANDATORY",
     });
   }
