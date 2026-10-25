@@ -61,6 +61,8 @@ HTTPS matters: phones only allow camera access on secure origins, so test the ph
 
 ### Phone camera on mobile data (TURN)
 
+> **Phone camera currently requires both devices on the same network; TURN pending.** The ICE server list is pluggable (`TURN_*` env vars → `iceServers()` in `src/lib/companion/server.ts`, served by `/api/candidate/pair` and `/api/companion/handshake`), so a relay can be added without code changes.
+
 The phone ↔ computer video is plain WebRTC with STUN, which works on most home/office Wi-Fi. Mobile carriers and strict corporate networks often need a **TURN relay**. Free options:
 
 - **Metered "Open Relay" / free tier** (metered.ca): sign up, copy the TURN URLs, username and credential. Free quota is small but plenty for demos.
